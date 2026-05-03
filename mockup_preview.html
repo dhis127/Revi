@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Solway:wght@700&family=PT+Sans:wght@400;700&family=Hahmlet:wght@400;700&display=swap" rel="stylesheet">
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body {
+    background: #2a231d;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    font-family: 'Hahmlet', serif;
+    padding: 16px 0;
+  }
+
+  /* iPhone 17 Pro frame — 88% zoom to fit 784px viewport */
+  .phone {
+    width: 393px;
+    height: 852px;
+    background: #FFF7EE;
+    border-radius: 50px;
+    position: relative;
+    overflow: hidden;
+    box-shadow: 0 0 0 8px #1a1a1a, 0 30px 80px rgba(0,0,0,0.5);
+    zoom: 0.88;
+  }
+
+  /* dynamic island */
+  .dynamic-island {
+    position: absolute;
+    top: 12px; left: 50%; transform: translateX(-50%);
+    width: 120px; height: 34px;
+    background: #000;
+    border-radius: 20px;
+    z-index: 10;
+  }
+
+  /* status bar */
+  .status {
+    position: absolute;
+    top: 0; left: 0; right: 40px;
+    height: 59px;
+    display: flex;
+    align-items: flex-end;
+    padding: 0 28px 8px;
+    font-family: 'PT Sans', sans-serif;
+    font-size: 15px;
+    font-weight: 700;
+    color: #1C1612;
+    z-index: 9;
+  }
+
+  /* walnut sidebar */
+  .sidebar {
+    position: absolute;
+    right: 0; top: 0; bottom: 0;
+    width: 40px;
+    background: #3B2015;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 5;
+  }
+  .sidebar-text {
+    writing-mode: vertical-rl;
+    transform: rotate(180deg);
+    font-family: 'PT Sans', sans-serif;
+    font-size: 10px;
+    /* ★ 자간 +5%: 기존 1.5px → 1.575px */
+    letter-spacing: 1.7325px;
+    color: rgba(255,255,255,0.55);
+    white-space: nowrap;
+  }
+  .sidebar-text b {
+    color: #fff;
+    font-weight: 700;
+  }
+
+  /* main content */
+  .content {
+    position: absolute;
+    top: 59px; left: 0; right: 40px; bottom: 0;
+    display: flex;
+    flex-direction: column;
+    /* ★ 10% top padding: 852px × 10% = 85px, minus safe-area 59px already accounted → use 85px on the inner content */
+    padding: 85px 32px 28px 24px;
+  }
+
+  /* logo group */
+  .logo-group {
+    /* stays at top of content (85px padding already applied above) */
+  }
+  .eyebrow {
+    font-family: 'Hahmlet', serif;
+    font-size: 11.55px; /* 10.5 × 1.1 */
+    color: #8A6523;
+    letter-spacing: 2px;
+    font-weight: 400;
+  }
+  .logo-wrap {
+    margin-top: 15px;
+    position: relative;
+    display: inline-block;
+  }
+  /* ★ 로고 크기 확대: 44px → 80px */
+  .logo {
+    font-family: 'Solway', serif;
+    font-size: 80px;
+    font-weight: 700;
+    color: #1C1612;
+    line-height: 1;
+    letter-spacing: -0.02em;
+  }
+  .logo-line {
+    position: absolute;
+    left: 4px;
+    bottom: -13px;
+    width: 90px;
+    height: 3px;
+    background: #B85C38;
+    border-radius: 1px;
+  }
+
+  /* spacer */
+  .spacer { flex: 1; }
+
+  /* swipe text */
+  .swipe {
+    text-align: right;
+    font-family: 'PT Sans', sans-serif;
+    font-size: 11.8px;
+    color: #3B2015;
+    margin-bottom: 22px;
+  }
+  .swipe .revi { color: #4A7B5E; font-weight: 700; }
+  .swipe .rest { color: #4A7B5E; }
+
+  /* fields */
+  .field {
+    border-bottom: 1px solid #A8957F;
+    padding: 8px 0;
+    font-family: 'Hahmlet', serif;
+    font-size: 12.6px;
+    color: #A8957F;
+    margin-bottom: 20px;
+  }
+  .forgot {
+    text-align: right;
+    font-family: 'PT Sans', sans-serif;
+    font-size: 9.9px;
+    color: #999;
+    margin-top: -12px;
+    margin-bottom: 20px;
+  }
+
+  /* divider */
+  .divider {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 12px;
+  }
+  .divider hr { flex:1; border:none; border-top: 1px solid #CCC; }
+  .divider span { font-family: 'PT Sans', sans-serif; font-size: 9.9px; color: #AAA; }
+
+  /* google btn */
+  .google-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 14px;
+    background: #fff;
+    border: 1px solid #DDD;
+    border-radius: 10px;
+    font-family: 'PT Sans', sans-serif;
+    font-size: 12.6px;
+    color: #3B2015;
+    margin-bottom: 18px;
+  }
+  .google-icon {
+    width: 18px; height: 18px;
+  }
+
+  /* signup */
+  .signup {
+    text-align: center;
+    font-family: 'PT Sans', sans-serif;
+    font-size: 10.8px;
+    color: #888;
+  }
+  .signup b { color: #4A7B5E; }
+
+  /* label */
+  .change-label {
+    position: absolute;
+    bottom: 12px; left: 0; right: 0;
+    text-align: center;
+    font-family: 'PT Sans', sans-serif;
+    font-size: 9px;
+    color: rgba(255,255,255,0.5);
+    z-index: 20;
+  }
+  .change-label span { background: rgba(74,123,94,0.9); color:#fff; padding: 2px 8px; border-radius: 8px; font-size: 9px; }
+</style>
+</head>
+<body>
+<div class="phone">
+  <div class="dynamic-island"></div>
+  <div class="status">9:55</div>
+
+  <!-- sidebar -->
+  <div class="sidebar">
+    <div class="sidebar-text">My Only one Book — <b>Revi</b>ew shelf</div>
+  </div>
+
+  <!-- main -->
+  <div class="content">
+    <div class="logo-group">
+      <div class="eyebrow">독 서 &nbsp;아 카 이 브</div>
+      <div class="logo-wrap">
+        <span class="logo">Revi</span>
+        <div class="logo-line"></div>
+      </div>
+    </div>
+
+    <div class="spacer"></div>
+
+    <div class="swipe">Swipe to my <span class="revi">Revi</span><span class="rest">ew shelf</span> →</div>
+
+    <div class="field">이메일</div>
+    <div class="field">비밀번호</div>
+    <div class="forgot">비밀번호를 잊으셨나요?</div>
+
+    <div class="divider">
+      <hr><span>또는</span><hr>
+    </div>
+
+    <div class="google-btn">
+      <svg class="google-icon" viewBox="0 0 18 18">
+        <path d="M17.6 9.2c0-.6-.06-1.2-.16-1.7H9v3.3h4.8c-.2 1.1-.85 2-1.8 2.6v2.2h2.9c1.7-1.6 2.7-3.9 2.7-6.4z" fill="#4285F4"/>
+        <path d="M9 18c2.4 0 4.5-.8 6-2.2l-2.9-2.2c-.8.5-1.8.85-3.1.85-2.4 0-4.4-1.6-5.1-3.8H.9v2.3C2.4 15.9 5.5 18 9 18z" fill="#34A853"/>
+        <path d="M3.9 10.65c-.2-.55-.3-1.15-.3-1.75s.1-1.2.3-1.75V4.85H.9C.3 6.05 0 7.5 0 9s.3 2.95.9 4.15l3-2.5z" fill="#FBBC05"/>
+        <path d="M9 3.6c1.35 0 2.55.45 3.5 1.35l2.6-2.6C13.5.85 11.4 0 9 0 5.5 0 2.4 2.1.9 5.1l3 2.3C4.6 5.2 6.6 3.6 9 3.6z" fill="#EA4335"/>
+      </svg>
+      Google로 계속하기
+    </div>
+
+    <div class="signup">아직 계정이 없으신가요? <b>회원가입</b></div>
+  </div>
+
+</div>
+</body>
+</html>

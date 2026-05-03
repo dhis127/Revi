@@ -1,0 +1,35 @@
+name: revi
+description: "A paper book highlight archiving app."
+publish_to: 'none'
+
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.2.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  
+  # UI & 폰트
+  google_fonts: ^6.2.1
+  
+  # 로컬 저장소
+  path_provider: ^2.1.1
+  
+  # 상태관리
+  provider: ^6.1.0
+  
+  # 갤러리 / 카메라
+  image_picker: ^1.1.2
+
+  # 아이콘
+  cupertino_icons: ^1.0.8
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^4.0.0
+
+flutter:
+  uses-material-design: true
