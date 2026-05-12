@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import '../config/design_tokens.dart';
+import '../providers/app_state.dart';
 import 'home_page.dart';
 
 class LoginPage extends StatefulWidget {
@@ -12,6 +14,7 @@ class LoginPage extends StatefulWidget {
 class _LoginPageState extends State<LoginPage>
     with SingleTickerProviderStateMixin {
   bool _obscurePassword = true;
+  final _nicknameCtrl = TextEditingController();
   late AnimationController _swipeController;
   late Animation<double> _swipeAnim;
 
@@ -37,19 +40,26 @@ class _LoginPageState extends State<LoginPage>
   }
 
   void _goHome() {
+    final name = _nicknameCtrl.text.trim();
+    if (name.isNotEmpty) {
+      context.read<AppState>().setNickname(name);
+    }
     Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const HomePage()));
   }
 
   @override
   void dispose() {
+    _nicknameCtrl.dispose();
     _swipeController.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
+    final isDark = context.watch<AppState>().isDark;
+
     return Scaffold(
-      backgroundColor: DesignTokens.bgIvory,
+      backgroundColor: DesignTokens.bgColor(isDark),
       body: GestureDetector(
         behavior: HitTestBehavior.translucent,
         onHorizontalDragEnd: (details) {
@@ -143,6 +153,29 @@ class _LoginPageState extends State<LoginPage>
                           ),
                         ),
                         const SizedBox(height: 22),
+
+                        // 닉네임 입력창
+                        TextField(
+                          controller: _nicknameCtrl,
+                          style: DesignTokens.ptSansRegular(12.6),
+                          textInputAction: TextInputAction.next,
+                          decoration: InputDecoration(
+                            hintText: '닉네임 (예: 김독서)',
+                            hintStyle: DesignTokens.ptSansRegular(
+                                12.6, const Color(0xFFAAAAAA)),
+                            enabledBorder: const UnderlineInputBorder(
+                              borderSide:
+                                  BorderSide(color: Color(0xFFBBBBBB)),
+                            ),
+                            focusedBorder: const UnderlineInputBorder(
+                              borderSide:
+                                  BorderSide(color: DesignTokens.sage),
+                            ),
+                            contentPadding:
+                                const EdgeInsets.only(top: 9, bottom: 7),
+                          ),
+                        ),
+                        const SizedBox(height: 20),
 
                         // 이메일 입력창 (12 × 1.05 = 12.6)
                         TextField(

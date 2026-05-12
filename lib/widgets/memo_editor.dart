@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import '../config/design_tokens.dart';
 import '../models/highlight.dart';
+import '../providers/app_state.dart';
 
 class MemoEditor extends StatefulWidget {
   final Highlight highlight;
@@ -43,6 +45,8 @@ class _MemoEditorState extends State<MemoEditor> {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = context.watch<AppState>().isDark;
+
     return GestureDetector(
       onTap: widget.onClose,
       child: Container(
@@ -54,10 +58,10 @@ class _MemoEditorState extends State<MemoEditor> {
             child: Material(
               color: Colors.transparent,
               child: Container(
-                decoration: const BoxDecoration(
-                  color: DesignTokens.bgIvory,
-                  borderRadius: BorderRadius.vertical(top: Radius.circular(18)),
-                  boxShadow: [BoxShadow(color: Colors.black26, blurRadius: 20, offset: Offset(0, -4))],
+                decoration: BoxDecoration(
+                  color: isDark ? DesignTokens.bgDark : DesignTokens.bgIvory,
+                  borderRadius: const BorderRadius.vertical(top: Radius.circular(18)),
+                  boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 20, offset: Offset(0, -4))],
                 ),
                 padding: EdgeInsets.fromLTRB(22, 18, 22,
                     MediaQuery.of(context).viewInsets.bottom + 32),
@@ -67,7 +71,7 @@ class _MemoEditorState extends State<MemoEditor> {
                     Container(
                       width: 36, height: 4,
                       decoration: BoxDecoration(
-                        color: DesignTokens.ruleStrong,
+                        color: isDark ? DesignTokens.ruleDarkStrong : DesignTokens.ruleStrong,
                         borderRadius: BorderRadius.circular(2),
                       ),
                     ),
@@ -76,12 +80,12 @@ class _MemoEditorState extends State<MemoEditor> {
                       children: [
                         Text(
                           '메모 ${widget.highlight.note.isNotEmpty ? '편집' : '추가'}',
-                          style: DesignTokens.hahmlet(15, weight: FontWeight.w600),
+                          style: DesignTokens.hahmlet(15, weight: FontWeight.w600, color: isDark ? DesignTokens.inkDark : DesignTokens.ink),
                         ),
                         const Spacer(),
                         GestureDetector(
                           onTap: widget.onClose,
-                          child: Text('×', style: DesignTokens.ptSans(20, color: DesignTokens.inkMute)),
+                          child: Text('×', style: DesignTokens.ptSans(20, color: isDark ? DesignTokens.inkDarkMute : DesignTokens.inkMute)),
                         ),
                       ],
                     ),
@@ -89,7 +93,7 @@ class _MemoEditorState extends State<MemoEditor> {
                     Container(
                       padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
                       decoration: BoxDecoration(
-                        color: DesignTokens.bgIvoryDeep,
+                        color: isDark ? DesignTokens.bgDarkDeep : DesignTokens.bgIvoryDeep,
                         border: Border(
                           left: BorderSide(
                             color: DesignTokens.slotColor(widget.highlight.slot),
@@ -104,12 +108,12 @@ class _MemoEditorState extends State<MemoEditor> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(widget.highlight.text,
-                              style: DesignTokens.hahmlet(12, color: DesignTokens.inkSoft)
+                              style: DesignTokens.hahmlet(12, color: isDark ? DesignTokens.inkDarkSoft : DesignTokens.inkSoft)
                                   .copyWith(height: 1.5)),
                           const SizedBox(height: 4),
                           Text(
                             'p.${widget.highlight.page}${widget.highlight.toc.isNotEmpty ? ' · ${widget.highlight.toc}' : ''}',
-                            style: DesignTokens.ptSans(9, color: DesignTokens.inkMute)
+                            style: DesignTokens.ptSans(9, color: isDark ? DesignTokens.inkDarkMute : DesignTokens.inkMute)
                                 .copyWith(letterSpacing: 0.8),
                           ),
                         ],
@@ -120,18 +124,21 @@ class _MemoEditorState extends State<MemoEditor> {
                       controller: _ctrl,
                       maxLines: 5,
                       autofocus: true,
-                      style: DesignTokens.hahmlet(14),
+                      style: DesignTokens.memoStyle(
+                          context.watch<AppState>().memoFont, 16, color: isDark ? DesignTokens.inkDark : DesignTokens.ink), // -2px
                       decoration: InputDecoration(
                         hintText: '이 문장에 대한 생각을 적어주세요…',
-                        hintStyle: DesignTokens.hahmlet(14, color: DesignTokens.inkFaint),
+                        hintStyle: DesignTokens.memoStyle(
+                            context.watch<AppState>().memoFont, 16, // -2px
+                            color: isDark ? DesignTokens.inkDarkFaint : DesignTokens.inkFaint),
                         filled: true,
-                        fillColor: Colors.white,
+                        fillColor: isDark ? DesignTokens.bgDarkEdge : Colors.white,
                         border: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(8),
-                            borderSide: const BorderSide(color: DesignTokens.rule)),
+                            borderSide: BorderSide(color: isDark ? DesignTokens.ruleDark : DesignTokens.rule)),
                         enabledBorder: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(8),
-                            borderSide: const BorderSide(color: DesignTokens.rule)),
+                            borderSide: BorderSide(color: isDark ? DesignTokens.ruleDark : DesignTokens.rule)),
                         focusedBorder: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(8),
                             borderSide: const BorderSide(color: DesignTokens.sage)),
@@ -144,26 +151,26 @@ class _MemoEditorState extends State<MemoEditor> {
                         OutlinedButton(
                           onPressed: widget.onClose,
                           style: OutlinedButton.styleFrom(
-                            side: const BorderSide(color: DesignTokens.ruleStrong),
+                            side: BorderSide(color: isDark ? DesignTokens.ruleDarkStrong : DesignTokens.ruleStrong),
                             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                             padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 13),
                           ),
-                          child: Text('취소', style: DesignTokens.hahmlet(13)),
+                          child: Text('취소', style: DesignTokens.hahmlet(13, color: isDark ? DesignTokens.inkDark : DesignTokens.ink)),
                         ),
                         const SizedBox(width: 8),
                         Expanded(
                           child: ElevatedButton(
                             onPressed: () => widget.onSave(_ctrl.text),
                             style: ElevatedButton.styleFrom(
-                              backgroundColor: DesignTokens.ink,
-                              foregroundColor: DesignTokens.bgIvory,
+                              backgroundColor: isDark ? DesignTokens.inkDark : DesignTokens.ink,
+                              foregroundColor: isDark ? DesignTokens.bgDark : DesignTokens.bgIvory,
                               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                               padding: const EdgeInsets.symmetric(vertical: 13),
                               elevation: 0,
                             ),
                             child: Text('저장',
                                 style: DesignTokens.hahmlet(14, weight: FontWeight.w600,
-                                    color: DesignTokens.bgIvory)),
+                                    color: isDark ? DesignTokens.bgDark : DesignTokens.bgIvory)),
                           ),
                         ),
                       ],

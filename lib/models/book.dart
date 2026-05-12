@@ -6,6 +6,8 @@ class Book {
   final int shelf;    // 0 = covers, 1-3 = spines
   final int highlightCount;
   final String lastDate;
+  final String? coverImagePath;
+  final String? comment;
 
   const Book({
     required this.id,
@@ -15,16 +17,20 @@ class Book {
     required this.shelf,
     this.highlightCount = 0,
     this.lastDate = '',
+    this.coverImagePath,
+    this.comment,
   });
 
-  Book copyWith({int? highlightCount}) => Book(
+  Book copyWith({int? shelf, int? highlightCount, String? coverImagePath, String? comment}) => Book(
     id: id,
     title: title,
     author: author,
     color: color,
-    shelf: shelf,
+    shelf: shelf ?? this.shelf,
     highlightCount: highlightCount ?? this.highlightCount,
     lastDate: lastDate,
+    coverImagePath: coverImagePath ?? this.coverImagePath,
+    comment: comment ?? this.comment,
   );
 }
 

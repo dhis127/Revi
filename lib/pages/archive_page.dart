@@ -1,6 +1,9 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 import '../config/design_tokens.dart';
+import '../models/book.dart';
 import '../models/highlight.dart';
 import '../providers/app_state.dart';
 import '../widgets/highlight_card.dart';
@@ -20,10 +23,34 @@ class ArchivePage extends StatefulWidget {
 class _ArchivePageState extends State<ArchivePage> {
   String _filter = 'all';
   Highlight? _memoTarget;
+  final _picker = ImagePicker();
+  final _commentCtrl = TextEditingController();
+  final _commentFocus = FocusNode();
+  bool _commentInitialized = false;
+
+  @override
+  void dispose() {
+    _commentCtrl.dispose();
+    _commentFocus.dispose();
+    super.dispose();
+  }
+
+  void _saveComment(String bookId) {
+    context.read<AppState>().updateBookComment(bookId, _commentCtrl.text.trim());
+    _commentFocus.unfocus();
+  }
+
+  Future<void> _pickCover(Book book) async {
+    final file = await _picker.pickImage(source: ImageSource.gallery);
+    if (file != null && mounted) {
+      context.read<AppState>().updateBookCover(book.id, file.path);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     final state = context.watch<AppState>();
+    final isDark = state.isDark;
     final book = state.books.firstWhere((b) => b.id == widget.bookId, orElse: () => state.books.first);
     final all = state.highlightsForBook(widget.bookId);
     final list = _filter == 'all' ? all : all.where((h) => h.slot == _filter).toList();
@@ -45,11 +72,11 @@ class _ArchivePageState extends State<ArchivePage> {
       child: Stack(
         children: [
           Scaffold(
-            backgroundColor: DesignTokens.bgIvory,
+            backgroundColor: isDark ? DesignTokens.bgDark : DesignTokens.bgIvory,
             body: Column(
               children: [
-                _buildTopBar(book.title, book.author),
-                _buildFilterRow(list.length),
+                _buildTopBar(book, isDark),
+                _buildFilterRow(list.length, isDark),
                 Expanded(
                   child: list.isEmpty
                       ? _buildEmpty()
@@ -67,9 +94,10 @@ class _ArchivePageState extends State<ArchivePage> {
             floatingActionButton: FloatingActionButton(
               onPressed: () => Navigator.push(context,
                   MaterialPageRoute(builder: (_) => ScanPage(fromArchive: true, archiveBookId: widget.bookId))),
-              backgroundColor: DesignTokens.sage,
-              elevation: 6,
-              child: const Icon(Icons.add, color: Colors.white, size: 22),
+              backgroundColor: isDark ? DesignTokens.sageDark : DesignTokens.sage,
+              elevation: isDark ? 2 : 6,
+              child: Icon(Icons.add,
+                  color: isDark ? DesignTokens.inkDarkSoft : Colors.white, size: 22),
             ),
           ),
           if (_memoTarget != null)
@@ -88,7 +116,13 @@ class _ArchivePageState extends State<ArchivePage> {
     );
   }
 
-  Widget _buildTopBar(String title, String author) {
+  Widget _buildTopBar(Book book, bool isDark) {
+    // 최초 1회 comment 초기화
+    if (!_commentInitialized) {
+      _commentCtrl.text = book.comment ?? '';
+      _commentInitialized = true;
+    }
+
     return SafeArea(
       bottom: false,
       child: Column(
@@ -100,29 +134,131 @@ class _ArchivePageState extends State<ArchivePage> {
               children: [
                 GestureDetector(
                   onTap: () => Navigator.pop(context),
-                  child: Text('← 서재', style: DesignTokens.hahmlet(13, color: DesignTokens.inkMute)),
+                  child: Text('← 서재', style: DesignTokens.hahmlet(13,
+                      color: isDark ? DesignTokens.inkDarkMute : DesignTokens.inkMute)),
                 ),
                 const Spacer(),
                 GestureDetector(
                   onTap: () => Navigator.push(context,
                       MaterialPageRoute(builder: (_) => const QuotesPage())),
                   child: Text('모아둔 문장 →',
-                      style: DesignTokens.hahmlet(12, color: DesignTokens.inkMute)),
+                      style: DesignTokens.hahmlet(12,
+                          color: isDark ? DesignTokens.inkDarkMute : DesignTokens.inkMute)),
                 ),
               ],
             ),
           ),
           Padding(
-            padding: const EdgeInsets.fromLTRB(24, 4, 24, 16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+            padding: const EdgeInsets.fromLTRB(24, 18, 20, 10),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
               children: [
-                Text(title,
-                    style: DesignTokens.hahmlet(22, weight: FontWeight.w600)
-                        .copyWith(letterSpacing: -0.2)),
-                const SizedBox(height: 3),
-                Text(author, style: DesignTokens.hahmlet(12, color: DesignTokens.inkMute)),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Text(book.title,
+                          style: DesignTokens.hahmlet(22, weight: FontWeight.w600,
+                              color: isDark ? DesignTokens.inkDark : DesignTokens.ink)
+                              .copyWith(letterSpacing: -0.2)),
+                      const SizedBox(height: 3),
+                      Text(book.author,
+                          style: DesignTokens.hahmlet(12,
+                              color: isDark ? DesignTokens.inkDarkMute : DesignTokens.inkMute)),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 16),
+                GestureDetector(
+                  onTap: book.coverImagePath == null ? () => _pickCover(book) : null,
+                  child: Container(
+                    width: 78, height: 108,
+                    padding: const EdgeInsets.all(2),
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(6),
+                      color: isDark ? DesignTokens.bgDarkDeep : DesignTokens.bgIvoryDeep,
+                    ),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(4),
+                      child: book.coverImagePath != null
+                          ? Image.file(File(book.coverImagePath!), fit: BoxFit.cover)
+                          : Stack(
+                              alignment: Alignment.center,
+                              children: [
+                                Container(
+                                  decoration: BoxDecoration(
+                                    gradient: isDark
+                                        ? DesignTokens.coverGradDark(book.color)
+                                        : DesignTokens.coverGrad(book.color),
+                                  ),
+                                ),
+                                Container(
+                                  width: 28,
+                                  height: 28,
+                                  decoration: BoxDecoration(
+                                    color: isDark
+                                        ? DesignTokens.inkDarkFaint.withOpacity(0.35)
+                                        : Colors.white.withOpacity(0.25),
+                                    shape: BoxShape.circle,
+                                    border: isDark
+                                        ? Border.all(
+                                            color: DesignTokens.inkDarkMute.withOpacity(0.4),
+                                            width: 1,
+                                          )
+                                        : null,
+                                  ),
+                                  child: Icon(
+                                    Icons.add,
+                                    color: isDark
+                                        ? DesignTokens.inkDarkSoft
+                                        : Colors.white,
+                                    size: 18,
+                                  ),
+                                ),
+                              ],
+                            ),
+                    ),
+                  ),
+                ),
               ],
+            ),
+          ),
+          // ── 한 줄 코멘트 ──
+          Padding(
+            padding: const EdgeInsets.fromLTRB(24, 0, 20, 18),
+            child: TextField(
+              controller: _commentCtrl,
+              focusNode: _commentFocus,
+              textInputAction: TextInputAction.done,
+              onSubmitted: (_) => _saveComment(book.id),
+              // 저장된 입력 텍스트: 선택된 메모 폰트
+              style: DesignTokens.memoStyle(
+                  context.watch<AppState>().memoFont, 15,
+                  color: isDark ? DesignTokens.inkDarkSoft : DesignTokens.inkSoft),
+              decoration: InputDecoration(
+                hintText: 'Comment',
+                hintStyle: DesignTokens.hahmlet(12,
+                    color: isDark ? DesignTokens.inkDarkFaint : DesignTokens.inkFaint),
+                prefixIcon: Padding(
+                  padding: const EdgeInsets.only(right: 8),
+                  child: Icon(Icons.chat_bubble_outline,
+                      size: 13,
+                      color: isDark ? DesignTokens.inkDarkFaint : DesignTokens.inkFaint),
+                ),
+                prefixIconConstraints: const BoxConstraints(minWidth: 0, minHeight: 0),
+                isDense: true,
+                contentPadding: const EdgeInsets.symmetric(vertical: 6),
+                border: InputBorder.none,
+                enabledBorder: UnderlineInputBorder(
+                  borderSide: BorderSide(
+                      color: isDark ? DesignTokens.ruleDark : DesignTokens.rule, width: 1),
+                ),
+                focusedBorder: UnderlineInputBorder(
+                  borderSide: BorderSide(
+                      color: isDark ? DesignTokens.inkDarkFaint : DesignTokens.inkFaint, width: 1),
+                ),
+              ),
             ),
           ),
         ],
@@ -130,30 +266,47 @@ class _ArchivePageState extends State<ArchivePage> {
     );
   }
 
-  Widget _buildFilterRow(int count) {
+  Widget _buildFilterRow(int count, bool isDark) {
+    final s = context.watch<AppState>(); // read→watch로 변경 (슬롯 추가 시 리빌드)
     return Padding(
       padding: const EdgeInsets.fromLTRB(24, 0, 24, 14),
       child: Row(
         children: [
-          SlotFilterChip(label: '전체', active: _filter == 'all', onTap: () => setState(() => _filter = 'all')),
+          Expanded(
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                children: [
+                  SlotFilterChip(label: '전체', active: _filter == 'all', onTap: () => setState(() => _filter = 'all')),
+                  ...s.highlightSlotOrder.map((slot) => Padding(
+                    padding: const EdgeInsets.only(left: 8),
+                    child: SlotFilterChip(
+                      dotColor: s.slotColor(slot),
+                      active: _filter == slot,
+                      onTap: () => setState(() => _filter = slot),
+                    ),
+                  )),
+                ],
+              ),
+            ),
+          ),
           const SizedBox(width: 8),
-          SlotFilterChip(dotColor: DesignTokens.sageSoft, active: _filter == 'sage', onTap: () => setState(() => _filter = 'sage')),
-          const SizedBox(width: 8),
-          SlotFilterChip(dotColor: DesignTokens.terracotta, active: _filter == 'terra', onTap: () => setState(() => _filter = 'terra')),
-          const SizedBox(width: 8),
-          SlotFilterChip(dotColor: DesignTokens.amber, active: _filter == 'amber', onTap: () => setState(() => _filter = 'amber')),
-          const Spacer(),
           Text('$count 문장',
-              style: DesignTokens.ptSans(10, color: DesignTokens.inkMute).copyWith(letterSpacing: 1.2)),
+              style: DesignTokens.ptSans(10,
+                  color: isDark ? DesignTokens.inkDarkMute : DesignTokens.inkMute)
+                  .copyWith(letterSpacing: 1.2)),
         ],
       ),
     );
   }
 
   Widget _buildEmpty() {
+    final isDark = context.watch<AppState>().isDark;
     return Center(
       child: Text('아직 모아둔 문장이 없어요.\n첫 문장을 남겨주세요.',
-          style: DesignTokens.hahmlet(14, color: DesignTokens.inkMute).copyWith(height: 1.7),
+          style: DesignTokens.hahmlet(14,
+              color: isDark ? DesignTokens.inkDarkMute : DesignTokens.inkMute)
+              .copyWith(height: 1.7),
           textAlign: TextAlign.center),
     );
   }

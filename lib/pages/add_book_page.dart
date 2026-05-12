@@ -1,12 +1,20 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:provider/provider.dart';
 import '../config/design_tokens.dart';
 import '../models/book.dart';
 import '../providers/app_state.dart';
 import 'scan_page.dart';
+import 'paywall_page.dart';
+import 'subscription_page.dart';
 
 class AddBookPage extends StatefulWidget {
-  const AddBookPage({super.key});
+  /// 어느 책장 페이지에 추가할지 (0 = 메인, 1 = 책장2 …). null이면 자동 배치.
+  final int? targetPageIndex;
+
+  const AddBookPage({super.key, this.targetPageIndex});
 
   @override
   State<AddBookPage> createState() => _AddBookPageState();
@@ -15,6 +23,8 @@ class AddBookPage extends StatefulWidget {
 class _AddBookPageState extends State<AddBookPage> {
   final _titleCtrl  = TextEditingController();
   final _authorCtrl = TextEditingController();
+  final _picker = ImagePicker();
+  File? _coverImage;
 
   @override
   void dispose() {
@@ -23,25 +33,85 @@ class _AddBookPageState extends State<AddBookPage> {
     super.dispose();
   }
 
-  void _save() {
+  Future<void> _pickCoverImage() async {
+    final file = await _picker.pickImage(source: ImageSource.gallery);
+    if (file != null) {
+      setState(() => _coverImage = File(file.path));
+    }
+  }
+
+  Future<String?> _saveCoverImage(String bookId) async {
+    if (_coverImage == null) return null;
+    final dir = await getApplicationDocumentsDirectory();
+    final dest = File('${dir.path}/cover_$bookId.jpg');
+    await _coverImage!.copy(dest.path);
+    return dest.path;
+  }
+
+  Future<void> _save() async {
     final state = context.read<AppState>();
     final title  = _titleCtrl.text.trim();
     final author = _authorCtrl.text.trim();
     if (title.isEmpty || author.isEmpty) return;
 
-    const colors = ['sage', 'terra', 'amber'];
+    if (!state.canSaveBook) {
+      if (!mounted) return;
+      if (state.isStandard) {
+        // 스탠다드 100권 초과 → 프리미엄 업셀
+        Navigator.push(
+          context,
+          PageRouteBuilder(
+            pageBuilder: (_, __, ___) => const SubscriptionPage(),
+            transitionsBuilder: (_, animation, __, child) => SlideTransition(
+              position: Tween<Offset>(begin: const Offset(0, 1), end: Offset.zero)
+                  .animate(CurvedAnimation(parent: animation, curve: Curves.easeOutCubic)),
+              child: child,
+            ),
+            transitionDuration: const Duration(milliseconds: 350),
+          ),
+        );
+      } else {
+        // 무료 5권 초과 → 스탠다드 페이월
+        Navigator.push(
+          context,
+          PageRouteBuilder(
+            pageBuilder: (_, __, ___) => const PaywallPage(),
+            transitionsBuilder: (_, animation, __, child) => SlideTransition(
+              position: Tween<Offset>(begin: const Offset(0, 1), end: Offset.zero)
+                  .animate(CurvedAnimation(parent: animation, curve: Curves.easeOutCubic)),
+              child: child,
+            ),
+            transitionDuration: const Duration(milliseconds: 350),
+          ),
+        );
+      }
+      return;
+    }
+
+    // 책장 우드톤에 어울리는 9가지 색상 중 랜덤 배정
+    const colors = [
+      'navy', 'wine', 'forest', 'terra', 'cognac',
+      'slate', 'amber', 'plum', 'sage',
+    ];
     final color = colors[state.books.length % colors.length];
-    final shelf = 1 + (state.books.where((b) => b.shelf > 0).length ~/ 5) % 3;
+    final bookId = state.nextBookId();
+    // targetPageIndex가 있으면 해당 페이지 첫 번째 책등 칸에 배치
+    final shelf = widget.targetPageIndex != null
+        ? widget.targetPageIndex! * 10 + 1
+        : 1 + (state.books.where((b) => b.shelf > 0 && b.shelf < 10).length ~/ 5) % 3;
+
+    final coverPath = await _saveCoverImage(bookId);
 
     state.addBook(Book(
-      id: state.nextBookId(),
+      id: bookId,
       title: title,
       author: author,
       color: color,
       shelf: shelf,
+      coverImagePath: coverPath,
     ));
     state.clearTocSaved();
-    Navigator.of(context).popUntil((r) => r.isFirst);
+    if (mounted) Navigator.of(context).popUntil((r) => r.isFirst);
   }
 
   @override
@@ -116,20 +186,44 @@ class _AddBookPageState extends State<AddBookPage> {
 
   Widget _buildCoverBox() {
     return Center(
-      child: Container(
-        width: 96, height: 128,
-        decoration: BoxDecoration(
-          color: DesignTokens.bgIvoryDeep,
-          borderRadius: BorderRadius.circular(6),
-          border: Border.all(color: DesignTokens.inkFaint, style: BorderStyle.solid),
-        ),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Icon(Icons.camera_alt_outlined, size: 22, color: DesignTokens.inkFaint),
-            const SizedBox(height: 8),
-            Text('표지 이미지', style: DesignTokens.hahmlet(11, color: DesignTokens.inkMute)),
-          ],
+      child: GestureDetector(
+        onTap: _pickCoverImage,
+        child: Container(
+          width: 96, height: 128,
+          decoration: BoxDecoration(
+            color: DesignTokens.bgIvoryDeep,
+            borderRadius: BorderRadius.circular(6),
+            border: Border.all(
+              color: _coverImage != null ? DesignTokens.sage : DesignTokens.inkFaint,
+            ),
+          ),
+          clipBehavior: Clip.hardEdge,
+          child: _coverImage != null
+              ? Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    Image.file(_coverImage!, fit: BoxFit.cover),
+                    Positioned(
+                      bottom: 4, right: 4,
+                      child: Container(
+                        padding: const EdgeInsets.all(4),
+                        decoration: BoxDecoration(
+                          color: Colors.black54,
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: const Icon(Icons.edit, size: 12, color: Colors.white),
+                      ),
+                    ),
+                  ],
+                )
+              : Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const Icon(Icons.camera_alt_outlined, size: 22, color: DesignTokens.inkFaint),
+                    const SizedBox(height: 8),
+                    Text('표지 이미지', style: DesignTokens.hahmlet(11, color: DesignTokens.inkMute)),
+                  ],
+                ),
         ),
       ),
     );

@@ -32,6 +32,7 @@ class _SearchPageState extends State<SearchPage> {
   @override
   Widget build(BuildContext context) {
     final state = context.watch<AppState>();
+    final isDark = state.isDark;
     final q = _query.toLowerCase();
 
     final matchedBooks = q.isEmpty
@@ -49,23 +50,23 @@ class _SearchPageState extends State<SearchPage> {
             .toList();
 
     return Scaffold(
-      backgroundColor: DesignTokens.bgIvory,
+      backgroundColor: isDark ? DesignTokens.bgDark : DesignTokens.bgIvory,
       body: Column(
         children: [
-          _buildSearchBar(context),
+          _buildSearchBar(context, isDark),
           Expanded(
             child: q.isEmpty
-                ? _buildEmpty()
+                ? _buildEmpty(isDark)
                 : (matchedBooks.isEmpty && matchedHighlights.isEmpty)
-                    ? _buildNoResult()
-                    : _buildResults(state, matchedBooks, matchedHighlights, q),
+                    ? _buildNoResult(isDark)
+                    : _buildResults(state, matchedBooks, matchedHighlights, q, isDark),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildSearchBar(BuildContext context) {
+  Widget _buildSearchBar(BuildContext context, bool isDark) {
     return SafeArea(
       bottom: false,
       child: Padding(
@@ -76,22 +77,25 @@ class _SearchPageState extends State<SearchPage> {
               child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
                 decoration: BoxDecoration(
-                  color: DesignTokens.bgIvoryDeep,
+                  color: isDark ? DesignTokens.bgDarkDeep : DesignTokens.bgIvoryDeep,
                   borderRadius: BorderRadius.circular(10),
                   border: Border.all(color: DesignTokens.sage),
                 ),
                 child: Row(
                   children: [
-                    const Icon(Icons.search, size: 16, color: DesignTokens.inkMute),
+                    Icon(Icons.search, size: 16,
+                        color: isDark ? DesignTokens.inkDarkMute : DesignTokens.inkMute),
                     const SizedBox(width: 8),
                     Expanded(
                       child: TextField(
                         controller: _ctrl,
                         autofocus: true,
-                        style: DesignTokens.hahmlet(13),
+                        style: DesignTokens.hahmlet(13,
+                            color: isDark ? DesignTokens.inkDark : DesignTokens.ink),
                         decoration: InputDecoration(
                           hintText: '책 또는 문장을 찾아요',
-                          hintStyle: DesignTokens.hahmlet(13, color: DesignTokens.inkFaint),
+                          hintStyle: DesignTokens.hahmlet(13,
+                              color: isDark ? DesignTokens.inkDarkFaint : DesignTokens.inkFaint),
                           border: InputBorder.none,
                           isDense: true,
                           contentPadding: const EdgeInsets.symmetric(vertical: 9),
@@ -101,7 +105,8 @@ class _SearchPageState extends State<SearchPage> {
                     if (_query.isNotEmpty)
                       GestureDetector(
                         onTap: () => _ctrl.clear(),
-                        child: const Icon(Icons.close, size: 16, color: DesignTokens.inkMute),
+                        child: Icon(Icons.close, size: 16,
+                            color: isDark ? DesignTokens.inkDarkMute : DesignTokens.inkMute),
                       ),
                   ],
                 ),
@@ -110,7 +115,8 @@ class _SearchPageState extends State<SearchPage> {
             const SizedBox(width: 10),
             GestureDetector(
               onTap: () => Navigator.pop(context),
-              child: Text('취소', style: DesignTokens.hahmlet(13, color: DesignTokens.inkMute)),
+              child: Text('취소', style: DesignTokens.hahmlet(13,
+                  color: isDark ? DesignTokens.inkDarkMute : DesignTokens.inkMute)),
             ),
           ],
         ),
@@ -118,24 +124,27 @@ class _SearchPageState extends State<SearchPage> {
     );
   }
 
-  Widget _buildEmpty() {
+  Widget _buildEmpty(bool isDark) {
     return Center(
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const Icon(Icons.search, size: 40, color: DesignTokens.inkFaint),
+          Icon(Icons.search, size: 40,
+              color: isDark ? DesignTokens.inkDarkFaint : DesignTokens.inkFaint),
           const SizedBox(height: 12),
           Text('책 제목, 저자, 문장으로 찾아요',
-              style: DesignTokens.hahmlet(13, color: DesignTokens.inkMute)),
+              style: DesignTokens.hahmlet(13,
+                  color: isDark ? DesignTokens.inkDarkMute : DesignTokens.inkMute)),
         ],
       ),
     );
   }
 
-  Widget _buildNoResult() {
+  Widget _buildNoResult(bool isDark) {
     return Center(
       child: Text('"$_query"에 대한 결과가 없어요',
-          style: DesignTokens.hahmlet(13, color: DesignTokens.inkMute)),
+          style: DesignTokens.hahmlet(13,
+              color: isDark ? DesignTokens.inkDarkMute : DesignTokens.inkMute)),
     );
   }
 
@@ -144,41 +153,43 @@ class _SearchPageState extends State<SearchPage> {
     List<Book> books,
     List<Highlight> highlights,
     String q,
+    bool isDark,
   ) {
     return ListView(
       padding: const EdgeInsets.only(bottom: 40),
       children: [
         if (books.isNotEmpty) ...[
-          _sectionHeader('책 · ${books.length}'),
-          ...books.map((b) => _bookTile(b, q)),
+          _sectionHeader('책 · ${books.length}', isDark),
+          ...books.map((b) => _bookTile(b, q, isDark)),
           const SizedBox(height: 8),
         ],
         if (highlights.isNotEmpty) ...[
-          _sectionHeader('문장 · ${highlights.length}'),
+          _sectionHeader('문장 · ${highlights.length}', isDark),
           ...highlights.map((h) {
             final book = state.books.firstWhere(
               (b) => b.id == h.bookId,
               orElse: () => state.books.first,
             );
-            return _highlightTile(h, book, q);
+            return _highlightTile(h, book, q, isDark);
           }),
         ],
       ],
     );
   }
 
-  Widget _sectionHeader(String label) {
+  Widget _sectionHeader(String label, bool isDark) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(22, 16, 22, 6),
       child: Text(
         label.toUpperCase(),
-        style: DesignTokens.ptSans(10, weight: FontWeight.w700, color: DesignTokens.inkMute)
+        style: DesignTokens.ptSans(10, weight: FontWeight.w700,
+            color: isDark ? DesignTokens.inkDarkMute : DesignTokens.inkMute)
             .copyWith(letterSpacing: 1.5),
       ),
     );
   }
 
-  Widget _bookTile(Book book, String q) {
+  Widget _bookTile(Book book, String q, bool isDark) {
     return GestureDetector(
       onTap: () {
         Navigator.pop(context);
@@ -189,9 +200,9 @@ class _SearchPageState extends State<SearchPage> {
         margin: const EdgeInsets.fromLTRB(18, 0, 18, 2),
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
         decoration: BoxDecoration(
-          color: DesignTokens.bgIvoryDeep,
+          color: isDark ? DesignTokens.bgDarkDeep : DesignTokens.bgIvoryDeep,
           borderRadius: BorderRadius.circular(10),
-          border: Border.all(color: DesignTokens.rule),
+          border: Border.all(color: isDark ? DesignTokens.ruleDark : DesignTokens.rule),
         ),
         child: Row(
           children: [
@@ -208,25 +219,28 @@ class _SearchPageState extends State<SearchPage> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  _highlightText(book.title, q, 14, FontWeight.w600),
+                  _highlightText(book.title, q, 14, FontWeight.w600,
+                      baseColor: isDark ? DesignTokens.inkDark : DesignTokens.ink),
                   const SizedBox(height: 2),
                   _highlightText(book.author, q, 11, FontWeight.w400,
-                      color: DesignTokens.inkMute),
+                      baseColor: isDark ? DesignTokens.inkDarkMute : DesignTokens.inkMute),
                 ],
               ),
             ),
             Text('${book.highlightCount}',
-                style: DesignTokens.ptSans(10, color: DesignTokens.inkFaint)
+                style: DesignTokens.ptSans(10,
+                    color: isDark ? DesignTokens.inkDarkFaint : DesignTokens.inkFaint)
                     .copyWith(letterSpacing: 0.5)),
             const SizedBox(width: 4),
-            const Icon(Icons.bookmark_outline, size: 12, color: DesignTokens.inkFaint),
+            Icon(Icons.bookmark_outline, size: 12,
+                color: isDark ? DesignTokens.inkDarkFaint : DesignTokens.inkFaint),
           ],
         ),
       ),
     );
   }
 
-  Widget _highlightTile(Highlight h, Book book, String q) {
+  Widget _highlightTile(Highlight h, Book book, String q, bool isDark) {
     return GestureDetector(
       onTap: () {
         Navigator.pop(context);
@@ -237,31 +251,34 @@ class _SearchPageState extends State<SearchPage> {
         margin: const EdgeInsets.fromLTRB(18, 0, 18, 2),
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
         decoration: BoxDecoration(
-          color: DesignTokens.bgIvoryDeep,
+          color: isDark ? DesignTokens.bgDarkDeep : DesignTokens.bgIvoryDeep,
           borderRadius: BorderRadius.circular(10),
-          border: Border.all(color: DesignTokens.rule),
+          border: Border.all(color: isDark ? DesignTokens.ruleDark : DesignTokens.rule),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            _highlightText(h.text, q, 13, FontWeight.w400),
+            _highlightText(h.text, q, 13, FontWeight.w400,
+                baseColor: isDark ? DesignTokens.inkDark : DesignTokens.ink),
             const SizedBox(height: 6),
             Row(
               children: [
                 Container(
                   width: 6, height: 6,
                   decoration: BoxDecoration(
-                    color: DesignTokens.slotColor(h.slot),
+                    color: context.read<AppState>().slotColor(h.slot),
                     shape: BoxShape.circle,
                   ),
                 ),
                 const SizedBox(width: 6),
                 Text(book.title,
-                    style: DesignTokens.ptSans(10, color: DesignTokens.inkMute)
+                    style: DesignTokens.ptSans(10,
+                        color: isDark ? DesignTokens.inkDarkMute : DesignTokens.inkMute)
                         .copyWith(letterSpacing: 0.5)),
                 const Spacer(),
                 Text('p.${h.page}',
-                    style: DesignTokens.ptSans(10, color: DesignTokens.inkFaint)),
+                    style: DesignTokens.ptSans(10,
+                        color: isDark ? DesignTokens.inkDarkFaint : DesignTokens.inkFaint)),
               ],
             ),
           ],
@@ -276,9 +293,9 @@ class _SearchPageState extends State<SearchPage> {
     String q,
     double size,
     FontWeight weight, {
-    Color? color,
+    Color? baseColor,
   }) {
-    final base = color ?? DesignTokens.ink;
+    final base = baseColor ?? DesignTokens.ink;
     final lower = text.toLowerCase();
     final idx = lower.indexOf(q);
 

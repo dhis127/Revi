@@ -6,6 +6,7 @@ import '../config/design_tokens.dart';
 import '../models/highlight.dart';
 import '../providers/app_state.dart';
 import 'add_book_page.dart';
+import 'paywall_page.dart';
 
 class ScanPage extends StatefulWidget {
   final bool fromArchive;
@@ -58,27 +59,42 @@ class _ScanPageState extends State<ScanPage> {
     if (widget.tocMode) {
       state.setTocSaved(widget.archiveBookId ?? 'b_new');
       Navigator.pop(context);
+      return;
+    }
+
+    // 문장 저장 전 한도 체크
+    if (!state.canSaveHighlight) {
+      showLimitBottomSheet(context, isHighlight: true);
+      return;
+    }
+
+    final now = DateTime.now();
+    final dateStr = '${now.year}.${now.month.toString().padLeft(2, '0')}.${now.day.toString().padLeft(2, '0')}';
+
+    // fromArchive: 이미 특정 책 내에서 스캔 → archiveBookId 사용
+    // 홈에서 스캔: 저장 후 AddBookPage에서 책 추가, bookId는 AppState가 다음에 부여할 id와 일치
+    final bookId = widget.fromArchive
+        ? (widget.archiveBookId ?? state.books.first.id)
+        : state.nextBookId();
+
+    final text = _typedText.isNotEmpty
+        ? _typedText
+        : '나는 모든 무엇이 누군가의 눈물이 나올 만큼 잊고 있었다.';
+    final h = Highlight(
+      id: state.nextHighlightId(),
+      bookId: bookId,
+      text: text,
+      page: 23,
+      slot: state.activeSlot,
+      date: dateStr,
+      note: _memo,
+      toc: state.tocSavedForBookId == bookId ? '2장 — 잿빛 골짜기' : '',
+    );
+    state.addHighlight(h);
+    if (widget.fromArchive) {
+      Navigator.pop(context);
     } else {
-      final bookId = widget.fromArchive ? (widget.archiveBookId ?? 'b1') : 'b1';
-      final text = _typedText.isNotEmpty
-          ? _typedText
-          : '나는 모든 무엇이 누군가의 눈물이 나올 만큼 잊고 있었다.';
-      final h = Highlight(
-        id: state.nextHighlightId(),
-        bookId: bookId,
-        text: text,
-        page: 23,
-        slot: state.activeSlot,
-        date: '2026.05.03',
-        note: _memo,
-        toc: state.tocSavedForBookId == bookId ? '2장 — 잿빛 골짜기' : '',
-      );
-      state.addHighlight(h);
-      if (widget.fromArchive) {
-        Navigator.pop(context);
-      } else {
-        Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const AddBookPage()));
-      }
+      Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const AddBookPage()));
     }
   }
 
@@ -322,14 +338,14 @@ class _ScanPageState extends State<ScanPage> {
               ),
             if (!isToc)
               Row(
-                children: ['sage', 'terra', 'amber'].map((s) => Padding(
+                children: state.highlightSlotOrder.map((s) => Padding(
                   padding: const EdgeInsets.only(left: 8),
                   child: GestureDetector(
                     onTap: () => state.setSlot(s),
                     child: Container(
                       width: 16, height: 16,
                       decoration: BoxDecoration(
-                        color: DesignTokens.slotColor(s),
+                        color: state.slotColor(s),
                         shape: BoxShape.circle,
                         border: Border.all(
                           color: state.activeSlot == s
