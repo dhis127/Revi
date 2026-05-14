@@ -13,8 +13,10 @@ import 'subscription_page.dart';
 class AddBookPage extends StatefulWidget {
   /// 어느 책장 페이지에 추가할지 (0 = 메인, 1 = 책장2 …). null이면 자동 배치.
   final int? targetPageIndex;
+  /// scan_page에서 넘어온 경우 true — '기존 도서에 추가' 버튼을 표시
+  final bool fromScan;
 
-  const AddBookPage({super.key, this.targetPageIndex});
+  const AddBookPage({super.key, this.targetPageIndex, this.fromScan = false});
 
   @override
   State<AddBookPage> createState() => _AddBookPageState();
@@ -318,22 +320,92 @@ class _AddBookPageState extends State<AddBookPage> {
       top: false,
       child: Padding(
         padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
-        child: SizedBox(
-          width: double.infinity,
-          child: ElevatedButton(
-            onPressed: _save,
-            style: ElevatedButton.styleFrom(
-              backgroundColor: DesignTokens.ink,
-              foregroundColor: DesignTokens.bgIvory,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-              padding: const EdgeInsets.symmetric(vertical: 16),
-              elevation: 0,
+        child: Column(
+          children: [
+            if (widget.fromScan) ...[
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton(
+                  onPressed: _showAddToExistingSheet,
+                  style: OutlinedButton.styleFrom(
+                    side: const BorderSide(color: DesignTokens.sage),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                  ),
+                  child: Text('기존 도서에 문장 추가',
+                      style: DesignTokens.hahmlet(14, color: DesignTokens.sage)),
+                ),
+              ),
+              const SizedBox(height: 10),
+            ],
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton(
+                onPressed: _save,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: DesignTokens.ink,
+                  foregroundColor: DesignTokens.bgIvory,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  elevation: 0,
+                ),
+                child: Text('새 책으로 저장',
+                    style: DesignTokens.hahmlet(15, weight: FontWeight.w600, color: DesignTokens.bgIvory)),
+              ),
             ),
-            child: Text('저장하기',
-                style: DesignTokens.hahmlet(15, weight: FontWeight.w600, color: DesignTokens.bgIvory)),
-          ),
+          ],
         ),
       ),
+    );
+  }
+
+  void _showAddToExistingSheet() {
+    final state = context.read<AppState>();
+    final books = state.books;
+    if (books.isEmpty) return;
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: DesignTokens.bgIvory,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (ctx) {
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(22, 20, 22, 8),
+                child: Text('어느 책에 추가할까요?',
+                    style: DesignTokens.hahmlet(16, weight: FontWeight.w600)),
+              ),
+              Flexible(
+                child: ListView.builder(
+                  shrinkWrap: true,
+                  itemCount: books.length,
+                  itemBuilder: (_, i) {
+                    final book = books[i];
+                    return ListTile(
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 22, vertical: 2),
+                      title: Text(book.title, style: DesignTokens.hahmlet(14)),
+                      subtitle: Text(book.author,
+                          style: DesignTokens.hahmlet(11, color: DesignTokens.inkMute)),
+                      onTap: () {
+                        state.moveLastHighlightToBook(book.id);
+                        Navigator.pop(ctx);
+                        Navigator.of(context).popUntil((r) => r.isFirst);
+                      },
+                    );
+                  },
+                ),
+              ),
+              const SizedBox(height: 8),
+            ],
+          ),
+        );
+      },
     );
   }
 

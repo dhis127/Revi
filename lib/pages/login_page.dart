@@ -14,6 +14,7 @@ class LoginPage extends StatefulWidget {
 class _LoginPageState extends State<LoginPage>
     with SingleTickerProviderStateMixin {
   bool _obscurePassword = true;
+  bool _googleLoading = false;
   final _nicknameCtrl = TextEditingController();
   late AnimationController _swipeController;
   late Animation<double> _swipeAnim;
@@ -60,6 +61,7 @@ class _LoginPageState extends State<LoginPage>
 
     return Scaffold(
       backgroundColor: DesignTokens.bgColor(isDark),
+      resizeToAvoidBottomInset: true,
       body: GestureDetector(
         behavior: HitTestBehavior.translucent,
         onHorizontalDragEnd: (details) {
@@ -75,14 +77,17 @@ class _LoginPageState extends State<LoginPage>
               right: 40,
               child: SafeArea(
                 bottom: false,
-                child: Padding(
+                child: SingleChildScrollView(
+                  keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+                  child: Padding(
                   padding: const EdgeInsets.only(
                       top: 85, left: 24, right: 28, bottom: 28),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                    // ── 로고 섹션 (Expanded로 여백 유지) ──
-                    Expanded(
+                    // ── 로고 섹션 ──
+                    SizedBox(
+                      height: 180,
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
@@ -274,7 +279,11 @@ class _LoginPageState extends State<LoginPage>
 
                         // Google 로그인 버튼 (12 × 1.05 = 12.6, 높이 살짝 증가)
                         OutlinedButton(
-                          onPressed: _goHome,
+                          onPressed: _googleLoading ? null : () async {
+                            setState(() => _googleLoading = true);
+                            await Future.delayed(const Duration(milliseconds: 900));
+                            if (mounted) _goHome();
+                          },
                           style: OutlinedButton.styleFrom(
                             backgroundColor: Colors.white,
                             side: const BorderSide(
@@ -285,7 +294,11 @@ class _LoginPageState extends State<LoginPage>
                             padding:
                                 const EdgeInsets.symmetric(vertical: 15),
                           ),
-                          child: Row(
+                          child: _googleLoading
+                              ? const SizedBox(
+                                  width: 18, height: 18,
+                                  child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF3B2015)))
+                              : Row(
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
                               SizedBox(
@@ -328,8 +341,9 @@ class _LoginPageState extends State<LoginPage>
                 ),
               ),
             ),
-            // Positioned.fill closes here
-            ),
+          ), // SingleChildScrollView
+          ), // Positioned.fill closes here
+
 
             // ── 우측 사이드바 ──
             Positioned(

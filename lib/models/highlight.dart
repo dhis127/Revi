@@ -19,9 +19,9 @@ class Highlight {
     this.toc = '',
   });
 
-  Highlight copyWith({String? note, String? toc}) => Highlight(
+  Highlight copyWith({String? bookId, String? note, String? toc}) => Highlight(
     id: id,
-    bookId: bookId,
+    bookId: bookId ?? this.bookId,
     text: text,
     page: page,
     slot: slot,

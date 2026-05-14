@@ -94,7 +94,7 @@ class _ScanPageState extends State<ScanPage> {
     if (widget.fromArchive) {
       Navigator.pop(context);
     } else {
-      Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const AddBookPage()));
+      Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const AddBookPage(fromScan: true)));
     }
   }
 
@@ -338,25 +338,30 @@ class _ScanPageState extends State<ScanPage> {
               ),
             if (!isToc)
               Row(
-                children: state.highlightSlotOrder.map((s) => Padding(
-                  padding: const EdgeInsets.only(left: 8),
-                  child: GestureDetector(
-                    onTap: () => state.setSlot(s),
-                    child: Container(
-                      width: 16, height: 16,
-                      decoration: BoxDecoration(
-                        color: state.slotColor(s),
-                        shape: BoxShape.circle,
-                        border: Border.all(
-                          color: state.activeSlot == s
-                              ? const Color(0xFFFFF7EE)
-                              : const Color(0x4DFFF7EE),
-                          width: state.activeSlot == s ? 2 : 1,
+                children: [
+                  Text('색상', style: TextStyle(fontSize: 10, color: const Color(0xFFFFF7EE).withValues(alpha: 0.55))),
+                  ...state.highlightSlotOrder.map((s) => Padding(
+                    padding: const EdgeInsets.only(left: 8),
+                    child: GestureDetector(
+                      onTap: () => state.setSlot(s),
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 150),
+                        width: state.activeSlot == s ? 20 : 16,
+                        height: state.activeSlot == s ? 20 : 16,
+                        decoration: BoxDecoration(
+                          color: state.slotColor(s),
+                          shape: BoxShape.circle,
+                          border: Border.all(
+                            color: state.activeSlot == s
+                                ? const Color(0xFFFFF7EE)
+                                : const Color(0x4DFFF7EE),
+                            width: state.activeSlot == s ? 2.5 : 1,
+                          ),
                         ),
                       ),
                     ),
-                  ),
-                )).toList(),
+                  )),
+                ],
               )
             else
               const SizedBox(width: 48),

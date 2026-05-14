@@ -1100,7 +1100,7 @@ class _CoverBook extends StatelessWidget {
       onTap: () => Navigator.push(context,
           MaterialPageRoute(builder: (_) => ArchivePage(bookId: book.id))),
       child: Container(
-        width: 75, height: 117,
+        width: 88, height: 132,
         decoration: const BoxDecoration(
           borderRadius: _r,
           boxShadow: [BoxShadow(color: Color(0x2E000000), blurRadius: 10, offset: Offset(2, 4))],
@@ -1108,7 +1108,7 @@ class _CoverBook extends StatelessWidget {
         child: ClipRRect(
           borderRadius: _r,
           child: hasCover
-              ? Image.file(File(book.coverImagePath!), fit: BoxFit.cover, width: 75, height: 117)
+              ? Image.file(File(book.coverImagePath!), fit: BoxFit.cover, width: 88, height: 132)
               : Stack(
                   fit: StackFit.expand,
                   children: [

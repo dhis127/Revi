@@ -47,6 +47,78 @@ class _ArchivePageState extends State<ArchivePage> {
     }
   }
 
+  void _showMoveSheet(Book book, bool isDark) {
+    final state = context.read<AppState>();
+    final pageCount = state.pageCount;
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: isDark ? DesignTokens.bgDarkDeep : DesignTokens.bgIvory,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (ctx) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(22, 20, 22, 12),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('책장 이동',
+                    style: DesignTokens.hahmlet(16, weight: FontWeight.w600,
+                        color: isDark ? DesignTokens.inkDark : DesignTokens.ink)),
+                const SizedBox(height: 4),
+                Text('이 책을 옮길 책장을 선택하세요.',
+                    style: DesignTokens.hahmlet(12,
+                        color: isDark ? DesignTokens.inkDarkMute : DesignTokens.inkMute)),
+                const SizedBox(height: 16),
+                // 앞표지 칸 (shelf = pageIndex * 10)
+                ...List.generate(pageCount, (pageIndex) {
+                  final coverShelf = pageIndex * 10;
+                  final spine1 = pageIndex * 10 + 1;
+                  final pageName = state.getPageName(pageIndex);
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(pageName,
+                          style: DesignTokens.ptSans(11,
+                              color: isDark ? DesignTokens.inkDarkMute : DesignTokens.inkMute)),
+                      const SizedBox(height: 6),
+                      Row(
+                        children: [
+                          _ShelfOption(
+                            label: '앞표지 칸',
+                            isActive: book.shelf == coverShelf,
+                            isDark: isDark,
+                            onTap: () {
+                              state.moveBookToShelf(book.id, coverShelf);
+                              Navigator.pop(ctx);
+                            },
+                          ),
+                          const SizedBox(width: 8),
+                          _ShelfOption(
+                            label: '책등 칸',
+                            isActive: book.shelf == spine1,
+                            isDark: isDark,
+                            onTap: () {
+                              state.moveBookToShelf(book.id, spine1);
+                              Navigator.pop(ctx);
+                            },
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 14),
+                    ],
+                  );
+                }),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final state = context.watch<AppState>();
@@ -138,6 +210,13 @@ class _ArchivePageState extends State<ArchivePage> {
                       color: isDark ? DesignTokens.inkDarkMute : DesignTokens.inkMute)),
                 ),
                 const Spacer(),
+                GestureDetector(
+                  onTap: () => _showMoveSheet(book, isDark),
+                  child: Text('책장 이동',
+                      style: DesignTokens.hahmlet(12,
+                          color: isDark ? DesignTokens.inkDarkMute : DesignTokens.inkMute)),
+                ),
+                const SizedBox(width: 16),
                 GestureDetector(
                   onTap: () => Navigator.push(context,
                       MaterialPageRoute(builder: (_) => const QuotesPage())),
@@ -308,6 +387,44 @@ class _ArchivePageState extends State<ArchivePage> {
               color: isDark ? DesignTokens.inkDarkMute : DesignTokens.inkMute)
               .copyWith(height: 1.7),
           textAlign: TextAlign.center),
+    );
+  }
+}
+
+class _ShelfOption extends StatelessWidget {
+  final String label;
+  final bool isActive;
+  final bool isDark;
+  final VoidCallback onTap;
+
+  const _ShelfOption({
+    required this.label,
+    required this.isActive,
+    required this.isDark,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+        decoration: BoxDecoration(
+          color: isActive
+              ? (isDark ? DesignTokens.sageDark.withValues(alpha: 0.2) : DesignTokens.sage.withValues(alpha: 0.12))
+              : (isDark ? DesignTokens.bgDarkEdge : Colors.white),
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(
+            color: isActive ? DesignTokens.sage : (isDark ? DesignTokens.ruleDark : DesignTokens.rule),
+          ),
+        ),
+        child: Text(
+          label,
+          style: DesignTokens.hahmlet(13,
+              color: isActive ? DesignTokens.sage : (isDark ? DesignTokens.inkDark : DesignTokens.ink)),
+        ),
+      ),
     );
   }
 }

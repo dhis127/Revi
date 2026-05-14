@@ -378,6 +378,17 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// 스캔 직후 '기존 도서에 추가' 시 사용 — 가장 최근 저장된 문장의 bookId를 변경
+  void moveLastHighlightToBook(String targetBookId) {
+    if (_highlights.isEmpty) return;
+    final last = _highlights.last;
+    _highlights = [
+      ..._highlights.sublist(0, _highlights.length - 1),
+      last.copyWith(bookId: targetBookId),
+    ];
+    notifyListeners();
+  }
+
   // ── 책장 페이지 관리 ─────────────────────────────────────────────────────────
   // pageIndex × 10 = 해당 페이지의 책장 슬롯 기준 (0=표지, 1~3=책등)
   int _pageCount = 1;

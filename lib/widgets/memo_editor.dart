@@ -83,6 +83,19 @@ class _MemoEditorState extends State<MemoEditor> {
                           style: DesignTokens.hahmlet(15, weight: FontWeight.w600, color: isDark ? DesignTokens.inkDark : DesignTokens.ink),
                         ),
                         const Spacer(),
+                        if (widget.highlight.note.isNotEmpty)
+                          GestureDetector(
+                            onTap: () => widget.onSave(''),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                              margin: const EdgeInsets.only(right: 8),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFFFEEEE),
+                                borderRadius: BorderRadius.circular(6),
+                              ),
+                              child: Text('삭제', style: DesignTokens.ptSans(11, color: const Color(0xFFCC3333))),
+                            ),
+                          ),
                         GestureDetector(
                           onTap: widget.onClose,
                           child: Text('×', style: DesignTokens.ptSans(20, color: isDark ? DesignTokens.inkDarkMute : DesignTokens.inkMute)),
