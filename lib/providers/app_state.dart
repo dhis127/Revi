@@ -366,6 +366,7 @@ class AppState extends ChangeNotifier {
   }
 
   void addHighlight(Highlight h) {
+    if (_highlights.any((e) => e.id == h.id)) return; // 중복 방지
     _highlights = [h, ..._highlights];
     _effectiveHighlightCount++;
     notifyListeners();

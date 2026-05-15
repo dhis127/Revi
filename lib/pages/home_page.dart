@@ -400,9 +400,10 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
       onHorizontalDragEnd: (d) {
         if (_editingTitle) return;
         if (d.primaryVelocity == null) return;
-        if (d.primaryVelocity! < -300) {
+        // 오인식 방지: 임계값 상향 (600)
+        if (d.primaryVelocity! < -600) {
           Navigator.push(context, MaterialPageRoute(builder: (_) => const ScanPage()));
-        } else if (d.primaryVelocity! > 300) {
+        } else if (d.primaryVelocity! > 600) {
           _showLogoutConfirm();
         }
       },
@@ -433,19 +434,18 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
                   // 수직 이동이 50px 이상이고, 수평보다 1.2배 이상 커야 함
                   if (dy.abs() < 50 || dy.abs() < dx.abs() * 1.2) return;
                   final s = context.read<AppState>();
-                  final totalPages = s.pageCount + 1; // +1 for report shelf
                   if (dy < 0) {
-                    if (_currentPage < totalPages - 1) {
-                      // 다음 책장으로 이동 (리포트 책장 포함)
+                    if (_currentPage < s.pageCount - 1) {
+                      // 다음 유저 책장으로 이동
                       HapticFeedback.lightImpact();
                       _pageCtrl.animateToPage(_currentPage + 1,
                           duration: const Duration(milliseconds: 380),
                           curve: Curves.easeOutCubic);
                     } else if (_currentPage == s.pageCount - 1) {
-                      // 마지막 유저 책장에서 위로 → 책장 추가
+                      // 마지막 유저 책장에서 위로 → 책장 추가 (무료면 paywall)
                       _addShelfPage(context, s);
                     }
-                    // 리포트 책장에서 위로 스와이프 → 아무 동작 없음
+                    // 리포트 책장(_currentPage == s.pageCount)에서 위로 → 무시
                   } else if (dy > 0 && _currentPage > 0) {
                     // 이전 책장으로 이동
                     HapticFeedback.lightImpact();

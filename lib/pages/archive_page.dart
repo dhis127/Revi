@@ -50,6 +50,8 @@ class _ArchivePageState extends State<ArchivePage> {
   void _showMoveSheet(Book book, bool isDark) {
     final state = context.read<AppState>();
     final pageCount = state.pageCount;
+    final currentPageIdx = book.shelf ~/ 10;
+
     showModalBottomSheet(
       context: context,
       backgroundColor: isDark ? DesignTokens.bgDarkDeep : DesignTokens.bgIvory,
@@ -71,44 +73,42 @@ class _ArchivePageState extends State<ArchivePage> {
                 Text('이 책을 옮길 책장을 선택하세요.',
                     style: DesignTokens.hahmlet(12,
                         color: isDark ? DesignTokens.inkDarkMute : DesignTokens.inkMute)),
-                const SizedBox(height: 16),
-                // 앞표지 칸 (shelf = pageIndex * 10)
+                const SizedBox(height: 12),
                 ...List.generate(pageCount, (pageIndex) {
-                  final coverShelf = pageIndex * 10;
-                  final spine1 = pageIndex * 10 + 1;
                   final pageName = state.getPageName(pageIndex);
-                  return Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(pageName,
-                          style: DesignTokens.ptSans(11,
-                              color: isDark ? DesignTokens.inkDarkMute : DesignTokens.inkMute)),
-                      const SizedBox(height: 6),
-                      Row(
+                  final isCurrent = pageIndex == currentPageIdx;
+                  return GestureDetector(
+                    onTap: isCurrent ? null : () {
+                      // 책등 슬롯(pageIndex * 10 + 1)으로 이동
+                      state.moveBookToShelf(book.id, pageIndex * 10 + 1);
+                      Navigator.pop(ctx);
+                    },
+                    child: Container(
+                      width: double.infinity,
+                      margin: const EdgeInsets.only(bottom: 8),
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                      decoration: BoxDecoration(
+                        color: isCurrent
+                            ? (isDark ? DesignTokens.sageDark.withValues(alpha: 0.15) : DesignTokens.sage.withValues(alpha: 0.1))
+                            : (isDark ? DesignTokens.bgDarkEdge : Colors.white),
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(
+                          color: isCurrent ? DesignTokens.sage : (isDark ? DesignTokens.ruleDark : DesignTokens.rule),
+                        ),
+                      ),
+                      child: Row(
                         children: [
-                          _ShelfOption(
-                            label: '앞표지 칸',
-                            isActive: book.shelf == coverShelf,
-                            isDark: isDark,
-                            onTap: () {
-                              state.moveBookToShelf(book.id, coverShelf);
-                              Navigator.pop(ctx);
-                            },
-                          ),
-                          const SizedBox(width: 8),
-                          _ShelfOption(
-                            label: '책등 칸',
-                            isActive: book.shelf == spine1,
-                            isDark: isDark,
-                            onTap: () {
-                              state.moveBookToShelf(book.id, spine1);
-                              Navigator.pop(ctx);
-                            },
-                          ),
+                          Text(pageName,
+                              style: DesignTokens.hahmlet(14,
+                                  color: isCurrent ? DesignTokens.sage : (isDark ? DesignTokens.inkDark : DesignTokens.ink))),
+                          if (isCurrent) ...[
+                            const Spacer(),
+                            Text('현재',
+                                style: DesignTokens.ptSans(11, color: DesignTokens.sage)),
+                          ],
                         ],
                       ),
-                      const SizedBox(height: 14),
-                    ],
+                    ),
                   );
                 }),
               ],

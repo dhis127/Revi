@@ -31,8 +31,8 @@ class _SubscriptionPageState extends State<SubscriptionPage> {
         : plan;
   }
 
-  // 프리미엄 잠금 여부 — 스탠다드 구독자만 업그레이드 가능
-  bool _isPremiumLocked(AppState state) => !state.isStandard && !state.isPremium;
+  // 프리미엄 잠금 없음 — 무료 유저도 바로 프리미엄 구독 가능
+  bool _isPremiumLocked(AppState state) => false;
 
   // 차액 업그레이드 금액 계산 (Phase 1: 183일 남은 것으로 mock)
   String _proratedNote(AppState state) {
@@ -70,10 +70,7 @@ class _SubscriptionPageState extends State<SubscriptionPage> {
     late final String ctaLabel;
     late final bool ctaEnabled;
 
-    if (_selected == SubscriptionTier.premiumAnnual && premLocked) {
-      ctaLabel = '스탠다드 구독 후 이용 가능';
-      ctaEnabled = false;
-    } else if (isCurrentPlan) {
+    if (isCurrentPlan) {
       ctaLabel = '현재 구독 중';
       ctaEnabled = false;
     } else if (_selected == SubscriptionTier.premiumAnnual && state.isStandard) {

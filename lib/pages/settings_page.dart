@@ -305,16 +305,49 @@ class _ThemePickerDialogState extends State<_ThemePickerDialog> {
               onTap: () {
                 if (!canUse) {
                   final plan = (mode == AppThemeMode.sepia) ? '프리미엄' : '스탠다드';
-                  Navigator.pop(context);
-                  ScaffoldMessenger.of(widget.parentContext).showSnackBar(SnackBar(
-                    content: Text('$plan 구독 후 이용 가능해요.',
-                        style: DesignTokens.hahmlet(12, color: DesignTokens.bgIvory)),
-                    backgroundColor: DesignTokens.inkSoft,
-                    behavior: SnackBarBehavior.floating,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                    margin: const EdgeInsets.fromLTRB(18, 0, 18, 12),
-                    duration: const Duration(seconds: 2),
-                  ));
+                  Navigator.pop(context); // theme dialog 닫기
+                  showDialog(
+                    context: widget.parentContext,
+                    builder: (dCtx) => AlertDialog(
+                      backgroundColor: isDark ? DesignTokens.bgDarkDeep : DesignTokens.bgIvory,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                      title: Text('$plan 전용 테마',
+                          style: DesignTokens.hahmlet(16, weight: FontWeight.w600,
+                              color: isDark ? DesignTokens.inkDark : DesignTokens.ink)),
+                      content: Text('이 테마는 $plan 구독 후 이용할 수 있어요.',
+                          style: DesignTokens.hahmlet(13,
+                              color: isDark ? DesignTokens.inkDarkSoft : DesignTokens.inkSoft)),
+                      actions: [
+                        TextButton(
+                          onPressed: () => Navigator.pop(dCtx),
+                          child: Text('닫기',
+                              style: DesignTokens.hahmlet(13,
+                                  color: isDark ? DesignTokens.inkDarkMute : DesignTokens.inkMute)),
+                        ),
+                        TextButton(
+                          onPressed: () {
+                            Navigator.pop(dCtx);
+                            Navigator.push(
+                              widget.parentContext,
+                              PageRouteBuilder(
+                                pageBuilder: (_, __, ___) => const SubscriptionPage(),
+                                transitionsBuilder: (_, anim, __, child) => SlideTransition(
+                                  position: Tween<Offset>(
+                                      begin: const Offset(0, 1), end: Offset.zero)
+                                      .animate(CurvedAnimation(parent: anim, curve: Curves.easeOutCubic)),
+                                  child: child,
+                                ),
+                                transitionDuration: const Duration(milliseconds: 350),
+                              ),
+                            );
+                          },
+                          child: Text('구독하기',
+                              style: DesignTokens.hahmlet(13,
+                                  weight: FontWeight.w600, color: DesignTokens.sage)),
+                        ),
+                      ],
+                    ),
+                  );
                   return;
                 }
                 state.setThemeMode(mode);
