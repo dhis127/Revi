@@ -45,7 +45,44 @@
       "Bash(awk '{print $2}')",
       "Bash(ps -p 24715 -o comm=)",
       "Bash(ps -p 1003 -o comm=)",
-      "Bash(flutter devices *)"
+      "Bash(flutter devices *)",
+      "Bash(gh --version)",
+      "Bash(cat)",
+      "Read(//tmp/**)",
+      "Bash(brew install *)",
+      "Bash(gh auth *)",
+      "Bash(echo \"Flutter started, PID: $!\")",
+      "Skill(update-config)",
+      "Skill(update-config:*)",
+      "Bash(pkill -f \"Simulator\")",
+      "Bash(echo \"Flutter run started in background \\(PID: $!\\)\")",
+      "Read(//Library/Fonts/**)",
+      "Bash(echo \"Running in background, PID $!\")",
+      "Bash(pkill -f \"dart\")",
+      "Bash(echo \"Flutter PID: $!\")",
+      "Bash(osascript -e 'tell application \"Simulator\" to activate')",
+      "Bash(echo \"PID: $!\")",
+      "Bash(echo \"Flutter run launched in background \\(PID: $!\\)\")"
     ]
   }
+  {
+  "permissions": {
+    "allow": [
+      ... 기존 내용 그대로 ...
+    ]
+  },
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "flutter analyze lib/ --no-fatal-infos 2>&1 | grep -E '(error|warning)' | head -20"
+          }
+        ]
+      }
+    ]
+  }
+}
 }

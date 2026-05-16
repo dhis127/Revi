@@ -22,6 +22,8 @@ dependencies:
   
   # 갤러리 / 카메라
   image_picker: ^1.1.2
+  camera: ^0.11.0
+  google_mlkit_text_recognition: ^0.13.0
 
   # 아이콘
   cupertino_icons: ^1.0.8
