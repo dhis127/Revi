@@ -27,15 +27,15 @@ class AppConfig {
   static int    get stdFreeMonths         => ((stdMonthlyKrw * 12 - stdAnnualKrw) / stdMonthlyKrw).round();
   static int    get cqStdAnnualFinal      => stdAnnualKrw - cqTravelerDiscount;
   static int    get cqPremAnnualFinal     => premAnnualKrw - cqBookdrunkerDiscount;
-  static String get cqTravelerRow         => '스탠다드 연간 ₩${_krw(cqTravelerDiscount)} 할인 → ₩${_krw(cqStdAnnualFinal)}/년';
-  static String get cqBookdrunkerRow      => '프리미엄 연간 ₩${_krw(cqBookdrunkerDiscount)} 할인 → ₩${_krw(cqPremAnnualFinal)}/년';
+  static String get cqTravelerRow         => '스탠다드 연간 ₩${krwFormat(cqTravelerDiscount)} 할인 → ₩${krwFormat(cqStdAnnualFinal)}/년';
+  static String get cqBookdrunkerRow      => '프리미엄 연간 ₩${krwFormat(cqBookdrunkerDiscount)} 할인 → ₩${krwFormat(cqPremAnnualFinal)}/년';
 
   // ── 화면에 표시되는 가격 문자열 (자동 생성) ──────────────────────────────
-  static String get stdMonthlyLabel       => '₩${_krw(stdMonthlyKrw)}';
-  static String get stdAnnualLabel        => '₩${_krw(stdAnnualKrw)}';
-  static String get premAnnualLabel       => '₩${_krw(premAnnualKrw)}';
-  static String get stdAnnualSubtitle     => '월 ₩${_krw(stdAnnualMonthlyRate)} · $stdFreeMonths개월 공짜';
-  static String get premAnnualSubtitle    => '월 ₩${_krw(premAnnualMonthlyRate)} · AI 심층 리포트 포함';
+  static String get stdMonthlyLabel       => '₩${krwFormat(stdMonthlyKrw)}';
+  static String get stdAnnualLabel        => '₩${krwFormat(stdAnnualKrw)}';
+  static String get premAnnualLabel       => '₩${krwFormat(premAnnualKrw)}';
+  static String get stdAnnualSubtitle     => '월 ₩${krwFormat(stdAnnualMonthlyRate)} · $stdFreeMonths개월 공짜';
+  static String get premAnnualSubtitle    => '월 ₩${krwFormat(premAnnualMonthlyRate)} · AI 심층 리포트 포함';
 
   // ──────────────────────────────────────────────────────────────────────────
   // 2. 플랜별 저장 한도
@@ -98,9 +98,9 @@ class AppConfig {
   // static const String rcPremAnnualId   = 'revi_premium_annual';
 
   // ──────────────────────────────────────────────────────────────────────────
-  // 내부 헬퍼 — 수정 불필요
+  // 포맷 헬퍼 — 외부에서도 사용 가능 (예: subscription_page.dart)
   // ──────────────────────────────────────────────────────────────────────────
-  static String _krw(int amount) {
+  static String krwFormat(int amount) {
     final s = amount.toString();
     final buf = StringBuffer();
     for (int i = 0; i < s.length; i++) {

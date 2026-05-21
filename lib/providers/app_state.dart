@@ -248,7 +248,7 @@ class AppState extends ChangeNotifier {
 
   // 스탠다드 → 프리미엄 업셀 (책장 8/10 이상)
   bool get shouldUpsellToPremium =>
-      _svc.isNearShelfLimitForUpsell(_books.length, _subscriptionTier);
+      _svc.isNearShelfLimitForUpsell(_pageCount, _subscriptionTier);
 
   String get bookLimitMessage =>
       _svc.bookLimitMessage(_effectiveBookCount, _subscriptionTier);
@@ -267,6 +267,7 @@ class AppState extends ChangeNotifier {
   void cancelSubscription() {
     _subscriptionTier = SubscriptionTier.free;
     if (!canUseThemeMode(_themeMode)) _themeMode = AppThemeMode.light;
+    if (!canUseFont(_memoFont)) _memoFont = 'gaegu';
     _highlightSlotOrder = ['sage', 'terra', 'amber'];
     _slotColors = {
       'sage':  const Color(0xFF8FB89E),
@@ -538,6 +539,22 @@ class AppState extends ChangeNotifier {
         minute: (j['reminderEndMinute'] as int?) ?? 0,
       );
 
+      final tierIdx = (j['subscriptionTier'] as int?) ?? 0;
+      _subscriptionTier = SubscriptionTier.values[tierIdx.clamp(0, SubscriptionTier.values.length - 1)];
+
+      _pageCount = (j['pageCount'] as int?) ?? 1;
+
+      if (j['pageNames'] != null) {
+        final m = j['pageNames'] as Map<String, dynamic>;
+        _pageNames.clear();
+        m.forEach((k, v) => _pageNames[int.parse(k)] = v as String);
+      }
+      if (j['shelfLabels'] != null) {
+        final m = j['shelfLabels'] as Map<String, dynamic>;
+        _shelfLabels.clear();
+        m.forEach((k, v) => _shelfLabels[int.parse(k)] = v as String);
+      }
+
       if (j['books'] != null) {
         _books = (j['books'] as List)
             .map((e) => Book.fromJson(e as Map<String, dynamic>))
@@ -548,6 +565,9 @@ class AppState extends ChangeNotifier {
             .map((e) => Highlight.fromJson(e as Map<String, dynamic>))
             .toList();
       }
+
+      _effectiveBookCount      = _books.length;
+      _effectiveHighlightCount = _highlights.length;
     } catch (_) {}
   }
 
@@ -571,6 +591,10 @@ class AppState extends ChangeNotifier {
         'reminderStartMinute': _reminderStartTime.minute,
         'reminderEndHour':     _reminderEndTime.hour,
         'reminderEndMinute':   _reminderEndTime.minute,
+        'subscriptionTier':    _subscriptionTier.index,
+        'pageCount':           _pageCount,
+        'pageNames':           _pageNames.map((k, v) => MapEntry(k.toString(), v)),
+        'shelfLabels':         _shelfLabels.map((k, v) => MapEntry(k.toString(), v)),
         'books':               _books.map((b) => b.toJson()).toList(),
         'highlights':          _highlights.map((h) => h.toJson()).toList(),
       }));

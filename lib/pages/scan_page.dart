@@ -102,9 +102,15 @@ class _ScanPageState extends State<ScanPage> {
     }
   }
 
+  void _goPaywall() {
+    Navigator.push(context,
+        MaterialPageRoute(builder: (_) => const PaywallPage()));
+  }
+
   // ── 촬영 ─────────────────────────────────────────────────────────────────
   Future<void> _takePicture() async {
     if (_camCtrl == null || !_camReady) return;
+    if (!context.read<AppState>().isSubscribed) { _goPaywall(); return; }
     try {
       final file = await _camCtrl!.takePicture();
       if (!mounted) return;
@@ -237,6 +243,7 @@ class _ScanPageState extends State<ScanPage> {
 
   // ── 갤러리에서 선택 ──────────────────────────────────────────────────────
   Future<void> _pickFromGallery() async {
+    if (!context.read<AppState>().isSubscribed) { _goPaywall(); return; }
     final file = await _picker.pickImage(source: ImageSource.gallery);
     if (file != null && mounted) {
       final bytes = await file.readAsBytes();

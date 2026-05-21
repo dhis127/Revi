@@ -41,22 +41,12 @@ class _SubscriptionPageState extends State<SubscriptionPage> {
       const remaining = 183; // Phase 3에서 실제 남은 일수로 교체
       const diff = (AppConfig.premAnnualKrw / AppConfig.annualDays
                   - AppConfig.stdAnnualKrw / AppConfig.annualDays) * remaining;
-      return '남은 기간 차액 약 ${_krw(diff.round())}만 추가 결제';
+      return '남은 기간 차액 약 ₩${AppConfig.krwFormat(diff.round())}만 추가 결제';
     }
     if (state.subscriptionTier == SubscriptionTier.standardMonthly) {
-      return '연간 구독 ${_krw(AppConfig.premAnnualKrw)} 결제 (월간 해지 후 전환)';
+      return '연간 구독 ₩${AppConfig.krwFormat(AppConfig.premAnnualKrw)} 결제 (월간 해지 후 전환)';
     }
     return '';
-  }
-
-  String _krw(int amount) {
-    final s = amount.toString();
-    final buf = StringBuffer('₩');
-    for (int i = 0; i < s.length; i++) {
-      if (i > 0 && (s.length - i) % 3 == 0) buf.write(',');
-      buf.write(s[i]);
-    }
-    return buf.toString();
   }
 
   @override
@@ -205,22 +195,21 @@ class _SubscriptionPageState extends State<SubscriptionPage> {
                       _sectionLabel('PLAN 비교', isDark),
                       const SizedBox(height: 12),
 
-                      // ⚠️ 가격·한도 변경 시 AppConfig와 함께 아래 표도 수정하세요.
                       _FeatureTable(
                         isDark: isDark,
-                        rows: const [
-                          _FRow('가격',          free: '무료',    std: '₩4,900~',   prem: '₩69,900'),
-                          _FRow('책 저장',        free: '5권',     std: '100권',     prem: '무제한'),
-                          _FRow('문장 저장',      free: '50개',    std: '무제한',    prem: '무제한'),
-                          _FRow('책장 슬롯',      free: '1개',     std: '10개',      prem: '무제한'),
-                          _FRow('OCR 스캔',       free: '—',      std: '무제한',    prem: '무제한'),
-                          _FRow('하이라이트 색상',  free: '3가지',   std: '3가지',     prem: '7슬롯·컬러피커'),
-                          _FRow('문장 아카이빙',   free: '텍스트형', std: '텍스트형',  prem: '텍스트형·카드형'),
-                          _FRow('AI 독서 리포트',  free: '—',      std: '기본',      prem: '심층'),
-                          _FRow('데이터 내보내기', free: '—',       std: 'CSV',      prem: 'CSV·PDF·MD'),
-                          _FRow('화면 모드',       free: '1종',    std: '3종',       prem: '4종·강도 조절'),
-                          _FRow('메모 폰트',       free: '3종',    std: '10종',      prem: '50종'),
-                          _FRow('위치·날씨 태깅',  free: '—',      std: '—',         prem: '✓'),
+                        rows: [
+                          _FRow('가격',          free: '무료',    std: '${AppConfig.stdMonthlyLabel}~', prem: AppConfig.premAnnualLabel),
+                          const _FRow('책 저장',        free: '${AppConfig.freeMaxBooks}권',  std: '${AppConfig.stdMaxBooks}권',  prem: '무제한'),
+                          const _FRow('문장 저장',      free: '${AppConfig.freeMaxHighlights}개', std: '무제한', prem: '무제한'),
+                          const _FRow('책장 슬롯',      free: '${AppConfig.freeMaxShelves}개', std: '${AppConfig.stdMaxShelves}개', prem: '무제한'),
+                          const _FRow('OCR 스캔',       free: '—',      std: '무제한',    prem: '무제한'),
+                          const _FRow('하이라이트 색상',  free: '${AppConfig.freeMaxSlots}가지', std: '${AppConfig.stdMaxSlots}가지', prem: '${AppConfig.premMaxSlots}슬롯·컬러피커'),
+                          const _FRow('문장 아카이빙',   free: '텍스트형', std: '텍스트형',  prem: '텍스트형·카드형'),
+                          const _FRow('AI 독서 리포트',  free: '—',      std: '기본',      prem: '심층'),
+                          const _FRow('데이터 내보내기', free: '—',       std: 'CSV',      prem: 'CSV·PDF·MD'),
+                          const _FRow('화면 모드',       free: '1종',    std: '3종',       prem: '4종·강도 조절'),
+                          const _FRow('메모 폰트',       free: '${AppConfig.freeMaxFonts}종', std: '${AppConfig.stdMaxFonts}종', prem: '${AppConfig.premMaxFonts}종'),
+                          const _FRow('위치·날씨 태깅',  free: '—',      std: '—',         prem: '✓'),
                         ],
                       ),
 

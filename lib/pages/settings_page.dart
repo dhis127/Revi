@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../config/app_config.dart';
 import '../config/design_tokens.dart';
 import '../providers/app_state.dart';
 import '../models/subscription_model.dart';
@@ -667,10 +668,10 @@ class _SlotAddRow extends StatelessWidget {
             Expanded(
               child: Text(
                 isLocked
-                    ? '색상 슬롯 추가 — 프리미엄 전용 (최대 7개)'
+                    ? '색상 슬롯 추가 — 프리미엄 전용 (최대 ${AppConfig.premMaxSlots}개)'
                     : isAtLimit
-                        ? '최대 슬롯 도달 ($slotCount / 7)'
-                        : '색상 슬롯 추가 ($slotCount / 7)',
+                        ? '최대 슬롯 도달 ($slotCount / ${AppConfig.premMaxSlots})'
+                        : '색상 슬롯 추가 ($slotCount / ${AppConfig.premMaxSlots})',
                 style: DesignTokens.hahmlet(13, color: isAvailable ? ink : faint),
               ),
             ),
@@ -1286,7 +1287,7 @@ class _FontPickerSheet extends StatelessWidget {
             Text('메모 폰트 선택',
                 style: DesignTokens.hahmlet(16, weight: FontWeight.w600, color: ink)),
             const SizedBox(height: 4),
-            Text('스탠다드 이상부터 고딕·필기체 10종, 프리미엄은 25종을 이용할 수 있어요.',
+            Text('스탠다드 이상부터 고딕·필기체 ${AppConfig.stdMaxFonts}종, 프리미엄은 ${AppConfig.premMaxFonts}종을 이용할 수 있어요.',
                 style: DesignTokens.ptSans(10, color: faint)
                     .copyWith(letterSpacing: 0.2, height: 1.5)),
             const SizedBox(height: 18),
