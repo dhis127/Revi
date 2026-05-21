@@ -202,7 +202,7 @@ class _SubscriptionPageState extends State<SubscriptionPage> {
                           const _FRow('책 저장',        free: '${AppConfig.freeMaxBooks}권',  std: '${AppConfig.stdMaxBooks}권',  prem: '무제한'),
                           const _FRow('문장 저장',      free: '${AppConfig.freeMaxHighlights}개', std: '무제한', prem: '무제한'),
                           const _FRow('책장 슬롯',      free: '${AppConfig.freeMaxShelves}개', std: '${AppConfig.stdMaxShelves}개', prem: '무제한'),
-                          const _FRow('OCR 스캔',       free: '—',      std: '무제한',    prem: '무제한'),
+                          const _FRow('OCR 스캔',       free: '가능',    std: '무제한',    prem: '무제한'),
                           const _FRow('하이라이트 색상',  free: '${AppConfig.freeMaxSlots}가지', std: '${AppConfig.stdMaxSlots}가지', prem: '${AppConfig.premMaxSlots}슬롯·컬러피커'),
                           const _FRow('문장 아카이빙',   free: '텍스트형', std: '텍스트형',  prem: '텍스트형·카드형'),
                           const _FRow('AI 독서 리포트',  free: '—',      std: '기본',      prem: '심층'),
