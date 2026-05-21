@@ -1,12 +1,14 @@
-import 'dart:io';
+import 'dart:math' show min, sqrt;
+import 'dart:typed_data';
+import 'dart:ui' as ui;
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
-import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 import '../config/design_tokens.dart';
 import '../models/highlight.dart';
 import '../providers/app_state.dart';
+import '../services/ocr_service.dart';
 import 'add_book_page.dart';
 import 'paywall_page.dart';
 
@@ -29,9 +31,10 @@ class ScanPage extends StatefulWidget {
 class _ScanPageState extends State<ScanPage> {
   // ── 촬영 상태 ──────────────────────────────────────────────────────────────
   bool _captured  = false;
-  File? _capturedImage;
+  Uint8List? _capturedBytes;
+  Size? _imageSize; // 촬영 이미지 실제 픽셀 크기 (좌표 매핑용)
 
-  // ── 카메라 ─────────────────────────────────────────────────────────────────
+  // ── 카메라 ──────────────────────────────────────────────────────────────────
   CameraController? _camCtrl;
   bool _camReady  = false;
   bool _camError  = false;
@@ -41,21 +44,28 @@ class _ScanPageState extends State<ScanPage> {
   String? _hoverSlot;
 
   // ── OCR ────────────────────────────────────────────────────────────────────
-  List<String> _ocrLines = [];
+  List<OcrLine> _ocrLines = [];
   bool _ocrRunning = false;
+
+  // ── 형광펜 ─────────────────────────────────────────────────────────────────
+  // 여러 줄을 그을 수 있도록 List<List<Offset>> 구조 사용
+  List<List<Offset>> _strokes = [];
+  // LayoutBuilder에서 캐시 (gesture callback에서 사용, setState 불필요)
+  double _layoutOx = 0, _layoutOy = 0, _layoutDw = 0, _layoutDh = 0;
 
   // ── 시트 ───────────────────────────────────────────────────────────────────
   bool   _memoOpen  = false;
   bool   _typeOpen  = false;
+  bool   _editOpen  = false;   // OCR 결과 확인·수정 시트
   String _memo      = '';
   String _typedText = '';
   final _memoCtrl  = TextEditingController();
   final _typeCtrl  = TextEditingController();
+  final _editCtrl  = TextEditingController();
   final _picker    = ImagePicker();
 
   // ── 팔레트 레이아웃 상수 ─────────────────────────────────────────────────
-  static const double _circleSize = 31.0;
-  static const double _circleGap  = 8.0;
+  static const double _circleSize = 22.0; // 31 × 0.8 × 0.9 ≈ 22
 
   @override
   void initState() {
@@ -68,14 +78,18 @@ class _ScanPageState extends State<ScanPage> {
     _camCtrl?.dispose();
     _memoCtrl.dispose();
     _typeCtrl.dispose();
+    _editCtrl.dispose();
     super.dispose();
   }
 
-  // ── 카메라 초기화 ──────────────────────────────────────────────────────────
+  // ── 카메라 초기화 ────────────────────────────────────────────────────────
   Future<void> _initCamera() async {
     try {
       final cameras = await availableCameras();
-      if (cameras.isEmpty) { if (mounted) setState(() => _camError = true); return; }
+      if (cameras.isEmpty) {
+        if (mounted) setState(() => _camError = true);
+        return;
+      }
       final cam = cameras.firstWhere(
         (c) => c.lensDirection == CameraLensDirection.back,
         orElse: () => cameras.first,
@@ -88,34 +102,136 @@ class _ScanPageState extends State<ScanPage> {
     }
   }
 
-  // ── 촬영 ──────────────────────────────────────────────────────────────────
+  // ── 촬영 ─────────────────────────────────────────────────────────────────
   Future<void> _takePicture() async {
     if (_camCtrl == null || !_camReady) return;
     try {
       final file = await _camCtrl!.takePicture();
-      if (mounted) {
-        setState(() { _capturedImage = File(file.path); _captured = true; });
-        _runOcr(file.path);
-      }
+      if (!mounted) return;
+      final bytes = await file.readAsBytes();
+      final codec = await ui.instantiateImageCodec(bytes);
+      final frame = await codec.getNextFrame();
+      final imgSize = Size(frame.image.width.toDouble(), frame.image.height.toDouble());
+      frame.image.dispose();
+      codec.dispose();
+      if (!mounted) return;
+      setState(() {
+        _capturedBytes = bytes;
+        _imageSize = imgSize;
+        _captured = true;
+      });
+      _runOcr(file.path);
     } catch (_) {}
   }
 
+  // ── OCR (Apple Vision 기반) ──────────────────────────────────────────────
   Future<void> _runOcr(String imagePath) async {
     setState(() => _ocrRunning = true);
     try {
-      final recognizer = TextRecognizer(script: TextRecognitionScript.korean);
-      final inputImage = InputImage.fromFilePath(imagePath);
-      final result = await recognizer.processImage(inputImage);
-      await recognizer.close();
+      final lines = await OcrService.recognizeText(imagePath);
       if (!mounted) return;
-      final lines = result.blocks
-          .expand((b) => b.lines)
-          .map((l) => l.text.trim())
-          .where((t) => t.length > 3)
-          .toList();
-      setState(() { _ocrLines = lines; _ocrRunning = false; });
+      setState(() {
+        _ocrLines = lines;
+        _strokes = [];
+        _ocrRunning = false;
+      });
     } catch (_) {
       if (mounted) setState(() => _ocrRunning = false);
+    }
+  }
+
+  // ── 형광펜 영역 → OCR 텍스트 추출 → 수정 시트 표시 ──────────────────────
+  void _confirmOcrSelection() {
+    if (_strokes.isEmpty) return;
+
+    // 모든 스트로크가 지나간 단어 박스 검출
+    final found = <int>{};
+    for (final stroke in _strokes) {
+      for (int i = 0; i < _ocrLines.length; i++) {
+        final expanded = _ocrLineRect(i)
+            .inflate(_ocrLines[i].h * _layoutDh * 0.25);
+        if (stroke.any(expanded.contains)) found.add(i);
+      }
+    }
+
+    final sorted = found.toList()..sort();
+    setState(() {
+      _editCtrl.text = _buildOcrText(sorted);
+      _editOpen = true;
+    });
+  }
+
+  // ── OCR 결과 포맷 ────────────────────────────────────────────────────────
+  // 본문 크기 단어 + 신뢰도 80% 이상 소형 텍스트(한자·주석 등)를 조합.
+  // 신뢰도 낮은 소형 텍스트는 오인식 가능성이 높아 생략.
+  String _buildOcrText(List<int> indices) {
+    if (indices.isEmpty) return '';
+    final words = indices.map((i) => _ocrLines[i]).toList();
+    if (words.length == 1) return words.first.text;
+
+    final hs = words.map((w) => w.h).toList()..sort();
+    final medH = hs[hs.length ~/ 2];
+
+    final main  = words.where((w) => w.h >= medH * 0.60).toList();
+    // 소형 텍스트: 인식 신뢰도 80% 이상인 것만 괄호 병기
+    final small = words
+        .where((w) => w.h < medH * 0.60 && w.confidence >= 0.80)
+        .toList();
+    if (main.isEmpty) return words.map((w) => w.text).join(' ');
+
+    // 읽기 순 정렬: Vision y좌표 기준 (y 클수록 이미지 상단)
+    main.sort((a, b) {
+      final dy = b.y - a.y;
+      if (dy.abs() > medH * 0.5) return dy > 0 ? 1 : -1;
+      return a.x.compareTo(b.x);
+    });
+
+    if (small.isEmpty) return main.map((w) => w.text).join(' ');
+
+    // 소형 텍스트를 공간적으로 가장 가까운 본문 단어 뒤에 괄호로 삽입
+    final used   = <OcrLine>{};
+    final tokens = <String>[];
+    for (final mw in main) {
+      final annots = small.where((aw) {
+        if (used.contains(aw)) return false;
+        final dY = (aw.y - mw.y).abs();
+        final dX = aw.x - (mw.x + mw.w);
+        return dY < medH && dX >= -mw.w * 0.3 && dX < mw.w * 3.0;
+      }).toList()
+        ..sort((a, b) => a.x.compareTo(b.x));
+      used.addAll(annots);
+      tokens.add(annots.isNotEmpty
+          ? '${mw.text}(${annots.map((a) => a.text).join(' ')})'
+          : mw.text);
+    }
+    return tokens.join(' ');
+  }
+
+  // ── 획 직선 보정 ──────────────────────────────────────────────────────────
+  // 수직 편차가 획 길이의 20% 미만이면 시작·끝 두 점으로 대체 → 직선화
+  void _straightenLastStroke() {
+    if (_strokes.isEmpty) return;
+    final pts = _strokes.last;
+    if (pts.length < 3) return;
+
+    final start = pts.first;
+    final end   = pts.last;
+    final dx    = end.dx - start.dx;
+    final dy    = end.dy - start.dy;
+    final lenSq = dx * dx + dy * dy;
+    if (lenSq < 1) return;
+
+    double maxDev = 0;
+    for (final p in pts) {
+      final t    = ((p.dx - start.dx) * dx + (p.dy - start.dy) * dy) / lenSq;
+      final projX = start.dx + t * dx;
+      final projY = start.dy + t * dy;
+      final dev  = (p.dx - projX) * (p.dx - projX) + (p.dy - projY) * (p.dy - projY);
+      if (dev > maxDev) maxDev = dev;
+    }
+
+    if (sqrt(maxDev) < sqrt(lenSq) * 0.20) {
+      _strokes[_strokes.length - 1] = [start, end];
     }
   }
 
@@ -123,7 +239,18 @@ class _ScanPageState extends State<ScanPage> {
   Future<void> _pickFromGallery() async {
     final file = await _picker.pickImage(source: ImageSource.gallery);
     if (file != null && mounted) {
-      setState(() { _capturedImage = File(file.path); _captured = true; });
+      final bytes = await file.readAsBytes();
+      final codec = await ui.instantiateImageCodec(bytes);
+      final frame = await codec.getNextFrame();
+      final imgSize = Size(frame.image.width.toDouble(), frame.image.height.toDouble());
+      frame.image.dispose();
+      codec.dispose();
+      if (!mounted) return;
+      setState(() {
+        _capturedBytes = bytes;
+        _imageSize = imgSize;
+        _captured = true;
+      });
       _runOcr(file.path);
     }
   }
@@ -166,12 +293,16 @@ class _ScanPageState extends State<ScanPage> {
   }
 
   // ── 팔레트: 드래그 위치 → 슬롯 계산 ──────────────────────────────────────
+  // Row 방식: 셀 = maxSize(39), 셀 간격 = 4, right:24 정렬
   String? _slotAtGlobal(Offset pos, List<String> slots, double screenWidth) {
-    final totalW = slots.length * _circleSize + (slots.length - 1) * _circleGap;
-    final startX = (screenWidth - totalW) / 2;
+    const maxSize  = _circleSize + 8.0; // 33 (25 + hover 8)
+    const gap      = 2.0;
+    const cellStep = maxSize + gap;     // 35
+    final totalW   = slots.length * maxSize + (slots.length - 1) * gap;
+    final leftEdge = screenWidth - 24 - totalW;
     for (int i = 0; i < slots.length; i++) {
-      final cx = startX + i * (_circleSize + _circleGap) + _circleSize / 2;
-      if ((pos.dx - cx).abs() <= (_circleSize + _circleGap) / 2) return slots[i];
+      final cx = leftEdge + i * cellStep + maxSize / 2;
+      if ((pos.dx - cx).abs() <= cellStep / 2) return slots[i];
     }
     return null;
   }
@@ -186,15 +317,18 @@ class _ScanPageState extends State<ScanPage> {
       children: [
         GestureDetector(
           behavior: HitTestBehavior.translucent,
-          onHorizontalDragEnd: (d) {
-            if ((d.primaryVelocity ?? 0) > 200) Navigator.pop(context);
-          },
+          // 캡처 후엔 형광펜 pan과의 arena 충돌을 막기 위해 swipe-back 비활성
+          onHorizontalDragEnd: _captured
+              ? null
+              : (d) {
+                  if ((d.primaryVelocity ?? 0) > 200) Navigator.pop(context);
+                },
           child: Scaffold(
             backgroundColor: const Color(0xFF0E0C0A),
             body: Column(
               children: [
                 _buildTopBar(isToc),
-                Expanded(child: _buildViewfinder(isToc)),
+                Expanded(child: _buildViewfinder(isToc, state.slotColor(state.activeSlot))),
                 _buildShutterRow(state, isToc),
               ],
             ),
@@ -205,6 +339,7 @@ class _ScanPageState extends State<ScanPage> {
         // ── 시트 ──────────────────────────────────────────────────────────
         if (_memoOpen) _buildMemoSheet(),
         if (_typeOpen) _buildTypeSheet(),
+        if (_editOpen) _buildTextEditSheet(),
       ],
     );
   }
@@ -229,7 +364,17 @@ class _ScanPageState extends State<ScanPage> {
             ),
             GestureDetector(
               onTap: _captured
-                  ? () => setState(() { _captured = false; _capturedImage = null; _typedText = ''; })
+                  ? () => setState(() {
+                      _captured = false;
+                      _capturedBytes = null;
+                      _imageSize = null;
+                      _ocrLines = [];
+                      _strokes = [];
+                      _typedText = '';
+                      _typeCtrl.clear();
+                      _memo = '';
+                      _memoCtrl.clear();
+                    })
                   : _pickFromGallery,
               child: _captured
                   ? Text('다시 촬영', style: DesignTokens.hahmlet(12, color: const Color(0xD9FFF7EE)))
@@ -241,49 +386,108 @@ class _ScanPageState extends State<ScanPage> {
     );
   }
 
+  // ── 좌표 변환 헬퍼 ───────────────────────────────────────────────────────
+  Rect _ocrLineRect(int i) {
+    final ln = _ocrLines[i];
+    return Rect.fromLTWH(
+      ln.x * _layoutDw + _layoutOx,
+      (1.0 - ln.y - ln.h) * _layoutDh + _layoutOy,
+      ln.w * _layoutDw,
+      ln.h * _layoutDh,
+    );
+  }
+
   // ── 뷰파인더 ──────────────────────────────────────────────────────────────
-  Widget _buildViewfinder(bool isToc) {
+  Widget _buildViewfinder(bool isToc, Color slotColor) {
     final sz = MediaQuery.sizeOf(context);
 
-    Widget cameraLayer;
-    if (_captured) {
-      // 촬영 후: 찍은 이미지 또는 텍스트 미리보기
-      cameraLayer = _capturedImage != null
-          ? Image.file(_capturedImage!, fit: BoxFit.cover,
-              width: double.infinity, height: double.infinity)
-          : Container(
-              color: const Color(0xFFF0E2C9),
-              padding: const EdgeInsets.fromLTRB(22, 30, 22, 22),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Align(alignment: Alignment.centerRight,
-                      child: Text('— 23 —',
-                          style: DesignTokens.ptSans(9, color: DesignTokens.inkMute)
-                              .copyWith(letterSpacing: 1.2))),
-                  const SizedBox(height: 14),
-                  if (isToc) ...[
-                    _tocLine('1장 — 서부에서 동부로 …… 1'),
-                    _tocLine('2장 — 잿빛 골짜기 …… 23'),
-                    _tocLine('3장 — 첫 파티 …… 47'),
-                    _tocLine('4장 — 옥스퍼드의 환영 …… 67'),
-                  ] else
-                    Text(_typedText.isNotEmpty ? _typedText : '나는 모든 무엇이 누군가의 눈물이 나올 만큼 잊고 있었다.',
-                        style: DesignTokens.lora(11, color: DesignTokens.inkSoft)),
-                ],
+    // 촬영 후 — 이미지 + 형광펜 오버레이
+    if (_captured && _capturedBytes != null && _imageSize != null) {
+      return LayoutBuilder(builder: (ctx, constraints) {
+        final cw = constraints.maxWidth;
+        final ch = constraints.maxHeight;
+        final scale = min(cw / _imageSize!.width, ch / _imageSize!.height);
+        final dw = _imageSize!.width * scale;
+        final dh = _imageSize!.height * scale;
+        final ox = (cw - dw) / 2;
+        final oy = (ch - dh) / 2;
+        // gesture callback에서 사용할 레이아웃 캐시
+        _layoutOx = ox; _layoutOy = oy; _layoutDw = dw; _layoutDh = dh;
+
+        return Stack(
+          fit: StackFit.expand,
+          children: [
+            // 촬영 이미지
+            Image.memory(_capturedBytes!, fit: BoxFit.contain),
+            // 형광펜 스트로크 오버레이
+            CustomPaint(
+              painter: _OcrOverlayPainter(
+                strokes: _strokes,
+                slotColor: slotColor,
               ),
-            );
-    } else if (_camReady && _camCtrl != null) {
-      // 카메라 라이브 프리뷰
-      cameraLayer = CameraPreview(_camCtrl!);
+            ),
+            // 터치 핸들러 — 새 획을 _strokes에 추가, 기존 획 유지
+            if (!_ocrRunning)
+              GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onPanStart: (d) => setState(() {
+                  _strokes.add([d.localPosition]);
+                }),
+                onPanUpdate: (d) => setState(() {
+                  _strokes.last.add(d.localPosition);
+                }),
+                onPanEnd: (_) => setState(_straightenLastStroke),
+                child: const SizedBox.expand(),
+              ),
+            // OCR 분석 중 스피너
+            if (_ocrRunning)
+              const Positioned(
+                top: 10, right: 10,
+                child: SizedBox(
+                  width: 18, height: 18,
+                  child: CircularProgressIndicator(
+                      color: Color(0xCCFFF7EE), strokeWidth: 1.5),
+                ),
+              ),
+            // 안내 문구
+            if (!_ocrRunning && _strokes.isEmpty)
+              Positioned(
+                top: 12, left: 0, right: 0,
+                child: Text('형광펜으로 원하는 문장 위에 선을 그어주세요',
+                    style: DesignTokens.hahmlet(12,
+                        color: const Color(0xCCFFF7EE)),
+                    textAlign: TextAlign.center),
+              ),
+          ],
+        );
+      });
+    }
+
+    // 카메라 라이브 프리뷰 / 에러 / 로딩
+    Widget cameraLayer;
+    if (_camReady && _camCtrl != null) {
+      cameraLayer = ClipRect(
+        child: OverflowBox(
+          alignment: Alignment.center,
+          child: FittedBox(
+            fit: BoxFit.cover,
+            child: SizedBox(
+              width: sz.width,
+              height: sz.width * _camCtrl!.value.aspectRatio,
+              child: CameraPreview(_camCtrl!),
+            ),
+          ),
+        ),
+      );
     } else if (_camError) {
       cameraLayer = const Center(
-        child: Text('카메라를 열 수 없습니다.\n설정 > 개인 정보 보호 > 카메라에서\nRevi를 허용해주세요.',
-            style: TextStyle(color: Color(0xB3FFF7EE), height: 1.6),
-            textAlign: TextAlign.center),
+        child: Text(
+          '카메라를 열 수 없습니다.\n설정 > Revi > 카메라를 허용해주세요.',
+          style: TextStyle(color: Color(0xB3FFF7EE), height: 1.6),
+          textAlign: TextAlign.center,
+        ),
       );
     } else {
-      // 로딩 중
       cameraLayer = const Center(
         child: CircularProgressIndicator(color: Color(0x66FFF7EE), strokeWidth: 1.5),
       );
@@ -293,104 +497,18 @@ class _ScanPageState extends State<ScanPage> {
       fit: StackFit.expand,
       children: [
         cameraLayer,
-        // 프레임 브라켓
         const _CornerBrackets(),
-        // 안내 문구 (촬영 전)
-        if (!_captured)
-          Positioned(
-            bottom: sz.height * 0.06, left: 40, right: 40,
-            child: Text(
-              isToc ? '책의 목차 페이지를 화면에 맞춰주세요' : '쪽수가 함께 보이도록 촬영해주세요',
-              style: DesignTokens.hahmlet(12, color: const Color(0xB3FFF7EE)),
-              textAlign: TextAlign.center,
-            ),
+        Positioned(
+          bottom: sz.height * 0.06, left: 40, right: 40,
+          child: Text(
+            isToc ? '책의 목차 페이지를 화면에 맞춰주세요' : '쪽수가 함께 보이도록 촬영해주세요',
+            style: DesignTokens.hahmlet(12, color: const Color(0xB3FFF7EE)),
+            textAlign: TextAlign.center,
           ),
-        // 촬영 완료 배지
-        if (_captured)
-          Positioned(
-            top: 14, left: 0, right: 0,
-            child: Center(
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-                decoration: BoxDecoration(
-                  color: DesignTokens.sage.withValues(alpha: 0.95),
-                  borderRadius: BorderRadius.circular(14),
-                ),
-                child: Text('✓ 촬영 완료',
-                    style: DesignTokens.hahmlet(11, weight: FontWeight.w600,
-                        color: Colors.white)),
-              ),
-            ),
-          ),
-        // OCR 결과 패널
-        if (_captured && (_ocrRunning || _ocrLines.isNotEmpty))
-          Positioned(
-            bottom: 0, left: 0, right: 0,
-            child: Container(
-              constraints: const BoxConstraints(maxHeight: 220),
-              decoration: BoxDecoration(
-                color: Colors.black.withValues(alpha: 0.72),
-                borderRadius: const BorderRadius.vertical(top: Radius.circular(14)),
-              ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 6),
-                    child: Row(
-                      children: [
-                        Text('인식된 문장 탭 → 입력',
-                            style: DesignTokens.ptSans(10,
-                                color: const Color(0x99FFF7EE))),
-                        const Spacer(),
-                        if (_ocrRunning)
-                          const SizedBox(width: 12, height: 12,
-                            child: CircularProgressIndicator(
-                                color: Color(0x66FFF7EE), strokeWidth: 1.2)),
-                      ],
-                    ),
-                  ),
-                  if (_ocrLines.isNotEmpty)
-                    Flexible(
-                      child: ListView.builder(
-                        shrinkWrap: true,
-                        padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-                        itemCount: _ocrLines.length,
-                        itemBuilder: (_, i) => GestureDetector(
-                          onTap: () => setState(() {
-                            _typedText = _ocrLines[i];
-                            _ocrLines  = [];
-                          }),
-                          child: Container(
-                            margin: const EdgeInsets.only(bottom: 6),
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 12, vertical: 8),
-                            decoration: BoxDecoration(
-                              color: const Color(0x1AFFF7EE),
-                              borderRadius: BorderRadius.circular(8),
-                              border: Border.all(color: const Color(0x33FFF7EE)),
-                            ),
-                            child: Text(_ocrLines[i],
-                                style: DesignTokens.hahmlet(12,
-                                    color: const Color(0xEEFFF7EE))
-                                    .copyWith(height: 1.4)),
-                          ),
-                        ),
-                      ),
-                    ),
-                ],
-              ),
-            ),
-          ),
+        ),
       ],
     );
   }
-
-  Widget _tocLine(String text) => Padding(
-        padding: const EdgeInsets.only(top: 6),
-        child: Text(text, style: DesignTokens.hahmlet(11, color: DesignTokens.inkSoft)),
-      );
 
   // ── 셔터 행 ───────────────────────────────────────────────────────────────
   Widget _buildShutterRow(AppState state, bool isToc) {
@@ -406,10 +524,7 @@ class _ScanPageState extends State<ScanPage> {
               width: 76,
               child: !_captured
                   ? _iconBtn(
-                      onTap: () => setState(() {
-                        _typeCtrl.text = _typedText;
-                        _typeOpen = true;
-                      }),
+                      onTap: () => setState(() => _typeOpen = true),
                       child: const Icon(Icons.keyboard_outlined,
                           size: 20, color: Color(0xFFFFF7EE)),
                     )
@@ -447,10 +562,11 @@ class _ScanPageState extends State<ScanPage> {
                     ),
             ),
 
-            // ── 가운데: 촬영 / 저장 버튼 ──
+            // ── 가운데: 촬영 / 선택 완료 / 저장 버튼 ──
             Expanded(
               child: Center(
                 child: !_captured
+                    // 촬영 전 — 셔터
                     ? GestureDetector(
                         onTap: _takePicture,
                         child: Container(
@@ -463,26 +579,49 @@ class _ScanPageState extends State<ScanPage> {
                           ),
                         ),
                       )
-                    : GestureDetector(
-                        onTap: _save,
-                        child: Container(
-                          constraints: const BoxConstraints(minWidth: 120, maxWidth: 180),
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 28, vertical: 16),
-                          decoration: BoxDecoration(
-                            color: DesignTokens.sage,
-                            borderRadius: BorderRadius.circular(34),
-                            border: Border.all(
-                                color: const Color(0xD9FFF7EE), width: 2),
+                    : _strokes.isNotEmpty
+                        // 형광펜 그은 상태 — 선택 완료
+                        ? GestureDetector(
+                            onTap: _confirmOcrSelection,
+                            child: Container(
+                              constraints: const BoxConstraints(minWidth: 120, maxWidth: 200),
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 28, vertical: 16),
+                              decoration: BoxDecoration(
+                                color: DesignTokens.sage,
+                                borderRadius: BorderRadius.circular(34),
+                                border: Border.all(
+                                    color: const Color(0xD9FFF7EE), width: 2),
+                              ),
+                              child: Text(
+                                '선택 완료',
+                                style: DesignTokens.hahmlet(15,
+                                    weight: FontWeight.w600, color: Colors.white),
+                                textAlign: TextAlign.center,
+                              ),
+                            ),
+                          )
+                        // 형광펜 미사용 — 문장 저장
+                        : GestureDetector(
+                            onTap: _save,
+                            child: Container(
+                              constraints: const BoxConstraints(minWidth: 120, maxWidth: 180),
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 28, vertical: 16),
+                              decoration: BoxDecoration(
+                                color: DesignTokens.sage,
+                                borderRadius: BorderRadius.circular(34),
+                                border: Border.all(
+                                    color: const Color(0xD9FFF7EE), width: 2),
+                              ),
+                              child: Text(
+                                isToc ? '목차 저장' : '문장 저장',
+                                style: DesignTokens.hahmlet(15,
+                                    weight: FontWeight.w600, color: Colors.white),
+                                textAlign: TextAlign.center,
+                              ),
+                            ),
                           ),
-                          child: Text(
-                            isToc ? '목차 저장' : '문장 저장',
-                            style: DesignTokens.hahmlet(15,
-                                weight: FontWeight.w600, color: Colors.white),
-                            textAlign: TextAlign.center,
-                          ),
-                        ),
-                      ),
               ),
             ),
 
@@ -542,47 +681,49 @@ class _ScanPageState extends State<ScanPage> {
   }
 
   // ── 색상 팔레트 오버레이 ──────────────────────────────────────────────────
+  // Row 기반: 슬롯마다 고정 셀 크기(maxSize)를 주고 원을 Center로 배치
+  // → hover 시 원이 커져도 인접 원 위치가 흔들리지 않고 항상 균등 정렬됨
   Widget _buildPaletteOverlay(AppState state) {
-    final slots  = state.highlightSlotOrder;
-    final totalW = slots.length * _circleSize + (slots.length - 1) * _circleGap;
-    final totalH = _circleSize + 10; // hover 확장 여유
+    final slots   = state.highlightSlotOrder;
+    const maxSize = _circleSize + 8.0; // 39 — hover 최대 크기
 
     return Positioned(
       bottom: 96 + MediaQuery.of(context).padding.bottom,
       right: 24,
-      child: SizedBox(
-        width: totalW,
-        height: totalH,
-        child: Stack(
-          clipBehavior: Clip.none,
-          children: List.generate(slots.length, (i) {
-            final slot    = slots[i];
-            final isHover = slot == _hoverSlot;
-            final cx = i * (_circleSize + _circleGap);
-            return Positioned(
-              left: cx,
-              top: isHover ? -5 : 0,
-              child: AnimatedContainer(
-                duration: const Duration(milliseconds: 120),
-                width:  isHover ? _circleSize + 8 : _circleSize,
-                height: isHover ? _circleSize + 8 : _circleSize,
-                decoration: BoxDecoration(
-                  color: state.slotColor(slot),
-                  shape: BoxShape.circle,
-                  border: Border.all(
-                    color: isHover ? const Color(0xFFFFF7EE) : const Color(0x66FFF7EE),
-                    width: isHover ? 2.5 : 1.5,
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          for (int i = 0; i < slots.length; i++) ...[
+            if (i > 0) const SizedBox(width: 2),   // 간격 50% 축소
+            SizedBox(
+              width: maxSize,
+              height: maxSize,
+              child: Center(
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 60),
+                  width:  slots[i] == _hoverSlot ? maxSize : _circleSize,
+                  height: slots[i] == _hoverSlot ? maxSize : _circleSize,
+                  decoration: BoxDecoration(
+                    color: state.slotColor(slots[i]),
+                    shape: BoxShape.circle,
+                    border: Border.all(
+                      color: slots[i] == _hoverSlot
+                          ? const Color(0xFFFFF7EE)
+                          : const Color(0x66FFF7EE),
+                      width: slots[i] == _hoverSlot ? 2.5 : 1.5,
+                    ),
+                    boxShadow: slots[i] == _hoverSlot
+                        ? [BoxShadow(
+                            color: state.slotColor(slots[i]).withValues(alpha: 0.7),
+                            blurRadius: 10, spreadRadius: 1)]
+                        : null,
                   ),
-                  boxShadow: isHover
-                      ? [BoxShadow(
-                          color: state.slotColor(slot).withValues(alpha: 0.7),
-                          blurRadius: 10, spreadRadius: 1)]
-                      : null,
                 ),
               ),
-            );
-          }),
-        ),
+            ),
+          ],
+        ],
       ),
     );
   }
@@ -599,6 +740,115 @@ class _ScanPageState extends State<ScanPage> {
           borderRadius: BorderRadius.circular(8),
         ),
         child: Center(child: child),
+      ),
+    );
+  }
+
+  // ── OCR 결과 확인·수정 시트 ──────────────────────────────────────────────
+  Widget _buildTextEditSheet() {
+    return GestureDetector(
+      onTap: () => setState(() => _editOpen = false),
+      child: Container(
+        color: Colors.black54,
+        child: Align(
+          alignment: Alignment.bottomCenter,
+          child: GestureDetector(
+            onTap: () {},
+            child: Material(
+              color: Colors.transparent,
+              child: Container(
+                decoration: const BoxDecoration(
+                  color: DesignTokens.bgIvory,
+                  borderRadius: BorderRadius.vertical(top: Radius.circular(18)),
+                  boxShadow: [BoxShadow(
+                      color: Colors.black26, blurRadius: 20,
+                      offset: Offset(0, -4))],
+                ),
+                padding: EdgeInsets.fromLTRB(22, 22, 22,
+                    MediaQuery.of(context).viewInsets.bottom + 36),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(children: [
+                      Text('문장 확인 및 수정',
+                          style: DesignTokens.hahmlet(15,
+                              weight: FontWeight.w600)),
+                      const Spacer(),
+                      GestureDetector(
+                        onTap: () => setState(() => _editOpen = false),
+                        child: Text('×',
+                            style: DesignTokens.ptSans(20,
+                                color: DesignTokens.inkMute)),
+                      ),
+                    ]),
+                    const SizedBox(height: 5),
+                    Text('OCR로 인식된 문장이에요. 저장 전에 직접 수정할 수 있어요.',
+                        style: DesignTokens.hahmlet(11,
+                            color: DesignTokens.inkMute)),
+                    const SizedBox(height: 10),
+                    TextField(
+                      controller: _editCtrl,
+                      maxLines: 5,
+                      autofocus: true,
+                      style: DesignTokens.lora(13),
+                      decoration: InputDecoration(
+                        hintText: '형광펜 영역의 문장이 여기에 표시됩니다…',
+                        hintStyle: DesignTokens.hahmlet(13,
+                            color: DesignTokens.inkFaint),
+                        filled: true,
+                        fillColor: DesignTokens.bgIvoryDeep,
+                        border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(8),
+                            borderSide: const BorderSide(
+                                color: DesignTokens.rule)),
+                        enabledBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(8),
+                            borderSide: const BorderSide(
+                                color: DesignTokens.rule)),
+                        focusedBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(8),
+                            borderSide: const BorderSide(
+                                color: DesignTokens.sage)),
+                        contentPadding: const EdgeInsets.all(12),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton(
+                        onPressed: () {
+                          final edited = _editCtrl.text.trim();
+                          if (edited.isEmpty) return;
+                          setState(() {
+                            _typedText = edited;
+                            _strokes   = [];
+                            _ocrLines  = [];
+                            _editOpen  = false;
+                          });
+                          _save(); // 수정 완료 → 즉시 문장 저장 화면으로
+                        },
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: DesignTokens.ink,
+                          foregroundColor: DesignTokens.bgIvory,
+                          shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(8)),
+                          padding:
+                              const EdgeInsets.symmetric(vertical: 12),
+                          elevation: 0,
+                        ),
+                        child: Text('확인',
+                            style: DesignTokens.hahmlet(14,
+                                weight: FontWeight.w600,
+                                color: DesignTokens.bgIvory)),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
       ),
     );
   }
@@ -762,6 +1012,50 @@ class _ScanPageState extends State<ScanPage> {
       ),
     );
   }
+}
+
+// ── 형광펜 스트로크 오버레이 페인터 ─────────────────────────────────────────
+// 여러 획(strokes)을 모두 그림 — iPhone 마크업 스타일
+
+class _OcrOverlayPainter extends CustomPainter {
+  final List<List<Offset>> strokes;
+  final Color slotColor;
+
+  const _OcrOverlayPainter({
+    required this.strokes,
+    required this.slotColor,
+  });
+
+  static const double _strokeW = 15.0; // 28 × 0.6 × 0.9 ≈ 15
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (strokes.isEmpty) return;
+    final paint = Paint()
+      ..color = slotColor.withValues(alpha: 0.40)
+      ..strokeWidth = _strokeW
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round
+      ..style = PaintingStyle.stroke;
+
+    for (final pts in strokes) {
+      if (pts.isEmpty) continue;
+      if (pts.length == 1) {
+        canvas.drawCircle(pts.first, _strokeW / 2,
+            Paint()..color = slotColor.withValues(alpha: 0.40));
+        continue;
+      }
+      final path = Path()..moveTo(pts.first.dx, pts.first.dy);
+      for (int i = 1; i < pts.length; i++) {
+        path.lineTo(pts[i].dx, pts[i].dy);
+      }
+      canvas.drawPath(path, paint);
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _OcrOverlayPainter old) =>
+      old.strokes != strokes || old.slotColor != slotColor;
 }
 
 // ── 코너 브라켓 ──────────────────────────────────────────────────────────────

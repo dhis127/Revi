@@ -1,4 +1,3 @@
-import 'dart:io';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -7,6 +6,7 @@ import '../config/design_tokens.dart';
 import '../models/book.dart';
 import '../providers/app_state.dart';
 import 'scan_page.dart';
+import '../widgets/book_cover_image.dart';
 import 'archive_page.dart';
 import 'add_book_page.dart';
 import 'quotes_page.dart';
@@ -139,14 +139,14 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
           }
           // 리포트 책장(마지막 페이지)으로 이동 후 리포트 열기
           final reportPageIdx = state.pageCount; // user pages + report page
+          final nav = Navigator.of(ctx);
           _pageCtrl.animateToPage(
             reportPageIdx,
             duration: const Duration(milliseconds: 400),
             curve: Curves.easeOutCubic,
           ).then((_) {
             if (!mounted) return;
-            Navigator.push(ctx,
-                MaterialPageRoute(builder: (_) => ReportDetailPage(report: report)));
+            nav.push(MaterialPageRoute(builder: (_) => ReportDetailPage(report: report)));
           });
         },
         onDismiss: () {
@@ -368,7 +368,7 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
       context: context,
       barrierColor: Colors.black54,
       builder: (_) => _LogoutDialog(onConfirm: () {
-        Navigator.of(context).popUntil((r) => r.isFirst);
+        context.read<AppState>().logout();
       }),
     );
   }
@@ -399,11 +399,13 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
       // ← 스캔, → 로그아웃 (모든 책장 페이지에 동일 적용)
       onHorizontalDragEnd: (d) {
         if (_editingTitle) return;
-        if (d.primaryVelocity == null) return;
-        // 오인식 방지: 임계값 상향 (600)
-        if (d.primaryVelocity! < -600) {
+        final vx = d.velocity.pixelsPerSecond.dx;
+        final vy = d.velocity.pixelsPerSecond.dy;
+        // 수직 성분이 수평 성분의 절반 이상이면 대각선 → 무시
+        if (vy.abs() > vx.abs() * 0.5) return;
+        if (vx < -600) {
           Navigator.push(context, MaterialPageRoute(builder: (_) => const ScanPage()));
-        } else if (d.primaryVelocity! > 600) {
+        } else if (vx > 600) {
           _showLogoutConfirm();
         }
       },
@@ -1094,8 +1096,7 @@ class _CoverBook extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final hasCover = book.coverImagePath != null;
-    final isDark   = context.watch<AppState>().isDark;
+    final isDark = context.watch<AppState>().isDark;
     return GestureDetector(
       onTap: () => Navigator.push(context,
           MaterialPageRoute(builder: (_) => ArchivePage(bookId: book.id))),
@@ -1107,9 +1108,10 @@ class _CoverBook extends StatelessWidget {
         ),
         child: ClipRRect(
           borderRadius: _r,
-          child: hasCover
-              ? Image.file(File(book.coverImagePath!), fit: BoxFit.cover, width: 88, height: 132)
-              : Stack(
+          child: BookCoverImage(
+            book: book,
+            width: 88, height: 132,
+            placeholder: Stack(
                   fit: StackFit.expand,
                   children: [
                     Container(
@@ -1145,6 +1147,7 @@ class _CoverBook extends StatelessWidget {
                     ),
                   ],
                 ),
+          ),
         ),
       ),
     );
@@ -1719,13 +1722,13 @@ class _ReportBookSpine extends StatelessWidget {
       },
       child: Container(
         width: 24, height: 168,
-        decoration: BoxDecoration(
-          color: const Color(0xFF3B2015),
-          borderRadius: const BorderRadius.only(
+        decoration: const BoxDecoration(
+          color: Color(0xFF3B2015),
+          borderRadius: BorderRadius.only(
             topLeft: Radius.circular(1), topRight: Radius.circular(1),
             bottomLeft: Radius.circular(2), bottomRight: Radius.circular(2),
           ),
-          boxShadow: const [BoxShadow(
+          boxShadow: [BoxShadow(
               color: Color(0x40000000), blurRadius: 4, offset: Offset(1, 2))],
         ),
         child: Stack(

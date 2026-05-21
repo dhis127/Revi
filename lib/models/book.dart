@@ -1,3 +1,6 @@
+import 'dart:convert';
+import 'dart:typed_data';
+
 class Book {
   final String id;
   final String title;
@@ -7,6 +10,7 @@ class Book {
   final int highlightCount;
   final String lastDate;
   final String? coverImagePath;
+  final Uint8List? coverImageBytes;
   final String? comment;
 
   const Book({
@@ -18,10 +22,11 @@ class Book {
     this.highlightCount = 0,
     this.lastDate = '',
     this.coverImagePath,
+    this.coverImageBytes,
     this.comment,
   });
 
-  Book copyWith({int? shelf, int? highlightCount, String? coverImagePath, String? comment}) => Book(
+  Book copyWith({int? shelf, int? highlightCount, String? coverImagePath, Uint8List? coverImageBytes, String? comment}) => Book(
     id: id,
     title: title,
     author: author,
@@ -30,7 +35,36 @@ class Book {
     highlightCount: highlightCount ?? this.highlightCount,
     lastDate: lastDate,
     coverImagePath: coverImagePath ?? this.coverImagePath,
+    coverImageBytes: coverImageBytes ?? this.coverImageBytes,
     comment: comment ?? this.comment,
+  );
+
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'title': title,
+    'author': author,
+    'color': color,
+    'shelf': shelf,
+    'highlightCount': highlightCount,
+    'lastDate': lastDate,
+    'coverImagePath': coverImagePath,
+    'coverImageBytes': coverImageBytes != null ? base64Encode(coverImageBytes!) : null,
+    'comment': comment,
+  };
+
+  factory Book.fromJson(Map<String, dynamic> j) => Book(
+    id: j['id'] as String,
+    title: j['title'] as String,
+    author: j['author'] as String,
+    color: j['color'] as String,
+    shelf: j['shelf'] as int,
+    highlightCount: (j['highlightCount'] as int?) ?? 0,
+    lastDate: (j['lastDate'] as String?) ?? '',
+    coverImagePath: j['coverImagePath'] as String?,
+    coverImageBytes: j['coverImageBytes'] != null
+        ? base64Decode(j['coverImageBytes'] as String)
+        : null,
+    comment: j['comment'] as String?,
   );
 }
 

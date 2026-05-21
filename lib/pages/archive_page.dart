@@ -1,4 +1,3 @@
-import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
@@ -6,6 +5,7 @@ import '../config/design_tokens.dart';
 import '../models/book.dart';
 import '../models/highlight.dart';
 import '../providers/app_state.dart';
+import '../widgets/book_cover_image.dart';
 import '../widgets/highlight_card.dart';
 import '../widgets/memo_editor.dart';
 import '../widgets/filter_chip_row.dart';
@@ -27,6 +27,11 @@ class _ArchivePageState extends State<ArchivePage> {
   final _commentCtrl = TextEditingController();
   final _commentFocus = FocusNode();
   bool _commentInitialized = false;
+
+  // ── 드래그 상태 ──────────────────────────────────────────────────────────
+  Highlight? _dragging;
+  bool       _overTrash  = false;
+  String?    _dragOverId;
 
   @override
   void dispose() {
@@ -123,67 +128,187 @@ class _ArchivePageState extends State<ArchivePage> {
   Widget build(BuildContext context) {
     final state = context.watch<AppState>();
     final isDark = state.isDark;
-    final book = state.books.firstWhere((b) => b.id == widget.bookId, orElse: () => state.books.first);
+    final book = state.books.firstWhere((b) => b.id == widget.bookId,
+        orElse: () => state.books.first);
     final all = state.highlightsForBook(widget.bookId);
     final list = _filter == 'all' ? all : all.where((h) => h.slot == _filter).toList();
 
-    return GestureDetector(
-      behavior: HitTestBehavior.translucent,
-      onHorizontalDragEnd: (d) {
-        if (_memoTarget != null) return;
-        final v = d.primaryVelocity;
-        if (v == null) return;
-        if (v > 200) {
-          Navigator.pop(context); // → Home
-        } else if (v < -200) {
-          Navigator.push(context, MaterialPageRoute(
-            builder: (_) => ScanPage(fromArchive: true, archiveBookId: widget.bookId),
-          ));
-        }
-      },
-      child: Stack(
-        children: [
-          Scaffold(
-            backgroundColor: isDark ? DesignTokens.bgDark : DesignTokens.bgIvory,
-            body: Column(
-              children: [
-                _buildTopBar(book, isDark),
-                _buildFilterRow(list.length, isDark),
-                Expanded(
-                  child: list.isEmpty
-                      ? _buildEmpty()
-                      : ListView.builder(
-                          padding: const EdgeInsets.fromLTRB(20, 4, 20, 80),
-                          itemCount: list.length,
-                          itemBuilder: (_, i) => HighlightCard(
-                            highlight: list[i],
-                            onTap: () => setState(() => _memoTarget = list[i]),
-                          ),
-                        ),
-                ),
-              ],
-            ),
-            floatingActionButton: FloatingActionButton(
-              onPressed: () => Navigator.push(context,
-                  MaterialPageRoute(builder: (_) => ScanPage(fromArchive: true, archiveBookId: widget.bookId))),
-              backgroundColor: isDark ? DesignTokens.sageDark : DesignTokens.sage,
-              elevation: isDark ? 2 : 6,
-              child: Icon(Icons.add,
-                  color: isDark ? DesignTokens.inkDarkSoft : Colors.white, size: 22),
-            ),
+    // 목차 데이터가 있으면 순서 변경 비활성
+    final hasTocOrder = all.any((h) => h.toc.isNotEmpty);
+
+    return Stack(
+      children: [
+        Scaffold(
+          backgroundColor: isDark ? DesignTokens.bgDark : DesignTokens.bgIvory,
+          body: Column(
+            children: [
+              _buildTopBar(book, isDark),
+              _buildFilterRow(list.length, isDark),
+              Expanded(
+                child: list.isEmpty
+                    ? _buildEmpty()
+                    : ListView.builder(
+                        padding: const EdgeInsets.fromLTRB(20, 4, 20, 100),
+                        itemCount: list.length,
+                        itemBuilder: (_, i) =>
+                            _buildDraggableCard(list[i], hasTocOrder, state),
+                      ),
+              ),
+            ],
           ),
-          if (_memoTarget != null)
-            Positioned.fill(
-              child: MemoEditor(
-                highlight: _memoTarget!,
-                onClose: () => setState(() => _memoTarget = null),
-                onSave: (memo) {
-                  context.read<AppState>().updateHighlightNote(_memoTarget!.id, memo);
-                  setState(() => _memoTarget = null);
+          floatingActionButton: FloatingActionButton(
+            onPressed: () => Navigator.push(
+                context,
+                MaterialPageRoute(
+                    builder: (_) =>
+                        ScanPage(fromArchive: true, archiveBookId: widget.bookId))),
+            backgroundColor: isDark ? DesignTokens.sageDark : DesignTokens.sage,
+            elevation: isDark ? 2 : 6,
+            child: Icon(Icons.add,
+                color: isDark ? DesignTokens.inkDarkSoft : Colors.white, size: 22),
+          ),
+        ),
+
+        // ── 드래그 중: 하단 휴지통 ─────────────────────────────────────────
+        if (_dragging != null)
+          Positioned(
+            bottom: 36 + MediaQuery.of(context).padding.bottom,
+            left: 0,
+            right: 0,
+            child: Center(
+              child: DragTarget<Highlight>(
+                onWillAcceptWithDetails: (_) {
+                  setState(() => _overTrash = true);
+                  return true;
                 },
+                onLeave: (_) => setState(() => _overTrash = false),
+                onAcceptWithDetails: (d) {
+                  context.read<AppState>().removeHighlight(d.data.id);
+                  setState(() { _dragging = null; _overTrash = false; });
+                },
+                builder: (ctx, candidate, _) => _buildTrashTarget(_overTrash),
               ),
             ),
-        ],
+          ),
+
+        // ── 메모 에디터 ────────────────────────────────────────────────────
+        if (_memoTarget != null)
+          Positioned.fill(
+            child: MemoEditor(
+              highlight: _memoTarget!,
+              onClose: () => setState(() => _memoTarget = null),
+              onSave: (memo) {
+                context.read<AppState>().updateHighlightNote(_memoTarget!.id, memo);
+                setState(() => _memoTarget = null);
+              },
+            ),
+          ),
+      ],
+    );
+  }
+
+  // ── 휴지통 위젯 (공용) ────────────────────────────────────────────────────
+  Widget _buildTrashTarget(bool over) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        AnimatedContainer(
+          duration: const Duration(milliseconds: 140),
+          width:  over ? 68 : 58,
+          height: over ? 68 : 58,
+          decoration: BoxDecoration(
+            color: over
+                ? DesignTokens.terracotta
+                : DesignTokens.terracotta.withValues(alpha: 0.12),
+            shape: BoxShape.circle,
+            border: Border.all(color: DesignTokens.terracotta, width: 2),
+            boxShadow: [
+              BoxShadow(
+                color: DesignTokens.terracotta.withValues(alpha: over ? 0.40 : 0.20),
+                blurRadius: 18,
+                offset: const Offset(0, 4),
+              ),
+            ],
+          ),
+          child: Icon(
+            Icons.delete_outline,
+            color: over ? Colors.white : DesignTokens.terracotta,
+            size: over ? 32 : 26,
+          ),
+        ),
+        const SizedBox(height: 6),
+        Text('삭제',
+            style: DesignTokens.ptSans(11,
+                color: DesignTokens.terracotta, weight: FontWeight.w600)),
+      ],
+    );
+  }
+
+  // ── 드래그 가능한 카드 ────────────────────────────────────────────────────
+  Widget _buildDraggableCard(
+    Highlight h,
+    bool hasTocOrder,
+    AppState state,
+  ) {
+    final isBeingDragged = _dragging?.id == h.id;
+    final isHoverTarget  = _dragOverId == h.id && !hasTocOrder;
+
+    final card = HighlightCard(
+      highlight: h,
+      onTap: () => setState(() => _memoTarget = h),
+    );
+
+    // 목차 없을 때만 순서 변경 드롭 타겟
+    Widget child = hasTocOrder
+        ? card
+        : DragTarget<Highlight>(
+            onWillAcceptWithDetails: (d) {
+              if (d.data.id == h.id) return false;
+              setState(() => _dragOverId = h.id);
+              return true;
+            },
+            onLeave: (_) {
+              if (_dragOverId == h.id) setState(() => _dragOverId = null);
+            },
+            onAcceptWithDetails: (d) {
+              state.reorderHighlights(d.data.id, h.id);
+              setState(() { _dragOverId = null; _dragging = null; });
+            },
+            builder: (ctx, candidate, _) => AnimatedContainer(
+              duration: const Duration(milliseconds: 120),
+              decoration: BoxDecoration(
+                border: isHoverTarget
+                    ? const Border(
+                        top: BorderSide(color: DesignTokens.sage, width: 2))
+                    : null,
+              ),
+              child: card,
+            ),
+          );
+
+    return Padding(
+      key: ValueKey(h.id),
+      padding: const EdgeInsets.only(bottom: 2),
+      child: LongPressDraggable<Highlight>(
+        data: h,
+        delay: const Duration(milliseconds: 350),
+        onDragStarted: () => setState(() { _dragging = h; _overTrash = false; }),
+        onDragEnd: (_) =>
+            setState(() { _dragging = null; _overTrash = false; _dragOverId = null; }),
+        onDraggableCanceled: (_, __) =>
+            setState(() { _dragging = null; _overTrash = false; _dragOverId = null; }),
+        feedback: Material(
+          color: Colors.transparent,
+          child: Opacity(
+            opacity: 0.85,
+            child: SizedBox(
+              width: MediaQuery.of(context).size.width - 40,
+              child: HighlightCard(highlight: h, onTap: () {}),
+            ),
+          ),
+        ),
+        childWhenDragging: Opacity(opacity: 0.25, child: card),
+        child: isBeingDragged ? Opacity(opacity: 0.25, child: child) : child,
       ),
     );
   }
@@ -260,43 +385,44 @@ class _ArchivePageState extends State<ArchivePage> {
                     ),
                     child: ClipRRect(
                       borderRadius: BorderRadius.circular(4),
-                      child: book.coverImagePath != null
-                          ? Image.file(File(book.coverImagePath!), fit: BoxFit.cover)
-                          : Stack(
-                              alignment: Alignment.center,
-                              children: [
-                                Container(
-                                  decoration: BoxDecoration(
-                                    gradient: isDark
-                                        ? DesignTokens.coverGradDark(book.color)
-                                        : DesignTokens.coverGrad(book.color),
-                                  ),
-                                ),
-                                Container(
-                                  width: 28,
-                                  height: 28,
-                                  decoration: BoxDecoration(
-                                    color: isDark
-                                        ? DesignTokens.inkDarkFaint.withOpacity(0.35)
-                                        : Colors.white.withOpacity(0.25),
-                                    shape: BoxShape.circle,
-                                    border: isDark
-                                        ? Border.all(
-                                            color: DesignTokens.inkDarkMute.withOpacity(0.4),
-                                            width: 1,
-                                          )
-                                        : null,
-                                  ),
-                                  child: Icon(
-                                    Icons.add,
-                                    color: isDark
-                                        ? DesignTokens.inkDarkSoft
-                                        : Colors.white,
-                                    size: 18,
-                                  ),
-                                ),
-                              ],
+                      child: BookCoverImage(
+                        book: book,
+                        placeholder: Stack(
+                          alignment: Alignment.center,
+                          children: [
+                            Container(
+                              decoration: BoxDecoration(
+                                gradient: isDark
+                                    ? DesignTokens.coverGradDark(book.color)
+                                    : DesignTokens.coverGrad(book.color),
+                              ),
                             ),
+                            Container(
+                              width: 28,
+                              height: 28,
+                              decoration: BoxDecoration(
+                                color: isDark
+                                    ? DesignTokens.inkDarkFaint.withValues(alpha: 0.35)
+                                    : Colors.white.withValues(alpha: 0.25),
+                                shape: BoxShape.circle,
+                                border: isDark
+                                    ? Border.all(
+                                        color: DesignTokens.inkDarkMute.withValues(alpha: 0.4),
+                                        width: 1,
+                                      )
+                                    : null,
+                              ),
+                              child: Icon(
+                                Icons.add,
+                                color: isDark
+                                    ? DesignTokens.inkDarkSoft
+                                    : Colors.white,
+                                size: 18,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
                     ),
                   ),
                 ),
@@ -391,41 +517,4 @@ class _ArchivePageState extends State<ArchivePage> {
   }
 }
 
-class _ShelfOption extends StatelessWidget {
-  final String label;
-  final bool isActive;
-  final bool isDark;
-  final VoidCallback onTap;
-
-  const _ShelfOption({
-    required this.label,
-    required this.isActive,
-    required this.isDark,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-        decoration: BoxDecoration(
-          color: isActive
-              ? (isDark ? DesignTokens.sageDark.withValues(alpha: 0.2) : DesignTokens.sage.withValues(alpha: 0.12))
-              : (isDark ? DesignTokens.bgDarkEdge : Colors.white),
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(
-            color: isActive ? DesignTokens.sage : (isDark ? DesignTokens.ruleDark : DesignTokens.rule),
-          ),
-        ),
-        child: Text(
-          label,
-          style: DesignTokens.hahmlet(13,
-              color: isActive ? DesignTokens.sage : (isDark ? DesignTokens.inkDark : DesignTokens.ink)),
-        ),
-      ),
-    );
-  }
-}
 

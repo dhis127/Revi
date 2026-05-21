@@ -34,7 +34,7 @@ class AppConfig {
   static String get stdMonthlyLabel       => '₩${_krw(stdMonthlyKrw)}';
   static String get stdAnnualLabel        => '₩${_krw(stdAnnualKrw)}';
   static String get premAnnualLabel       => '₩${_krw(premAnnualKrw)}';
-  static String get stdAnnualSubtitle     => '월 ₩${_krw(stdAnnualMonthlyRate)} · ${stdFreeMonths}개월 공짜';
+  static String get stdAnnualSubtitle     => '월 ₩${_krw(stdAnnualMonthlyRate)} · $stdFreeMonths개월 공짜';
   static String get premAnnualSubtitle    => '월 ₩${_krw(premAnnualMonthlyRate)} · AI 심층 리포트 포함';
 
   // ──────────────────────────────────────────────────────────────────────────

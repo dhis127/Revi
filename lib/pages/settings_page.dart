@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../config/design_tokens.dart';
 import '../providers/app_state.dart';
-import 'login_page.dart';
 import '../models/subscription_model.dart';
 import 'subscription_page.dart';
 
@@ -922,7 +921,7 @@ class _ReminderRow extends StatelessWidget {
                   value: live.reminderEnabled,
                   onChanged: (v) =>
                       context.read<AppState>().setReminderEnabled(v),
-                  activeColor: DesignTokens.sage,
+                  activeThumbColor: DesignTokens.sage,
                 )
               else
                 Row(children: [
@@ -1293,7 +1292,7 @@ class _FontPickerSheet extends StatelessWidget {
             const SizedBox(height: 18),
 
             // ── 고딕체 (Standard 5종) ──
-            _FontCategoryLabel(label: '고딕체'),
+            const _FontCategoryLabel(label: '고딕체'),
             const SizedBox(height: 8),
             ...stdGothic.map((f) {
               final canUse = state.canUseFont(f['key']!);
@@ -1302,7 +1301,7 @@ class _FontPickerSheet extends StatelessWidget {
             const SizedBox(height: 12),
 
             // ── 필기체 (Standard 5종) ──
-            _FontCategoryLabel(label: '필기체'),
+            const _FontCategoryLabel(label: '필기체'),
             const SizedBox(height: 8),
             ...stdHandwriting.map((f) {
               final canUse = state.canUseFont(f['key']!);
@@ -1320,7 +1319,7 @@ class _FontPickerSheet extends StatelessWidget {
               ),
               child: Row(
                 children: [
-                  Icon(Icons.workspace_premium_outlined,
+                  const Icon(Icons.workspace_premium_outlined,
                       size: 14, color: DesignTokens.amber),
                   const SizedBox(width: 8),
                   Expanded(
@@ -1349,25 +1348,25 @@ class _FontPickerSheet extends StatelessWidget {
             const SizedBox(height: 16),
 
             // ── 고딕체+ (Premium 5종) ──
-            _FontCategoryLabel(label: '고딕체+'),
+            const _FontCategoryLabel(label: '고딕체+'),
             const SizedBox(height: 8),
             ...premGothic.map((f) => _fontTile(context, f, state.isPremium)),
             const SizedBox(height: 12),
 
             // ── 명조체 (Premium 3종) ──
-            _FontCategoryLabel(label: '명조체'),
+            const _FontCategoryLabel(label: '명조체'),
             const SizedBox(height: 8),
             ...premMyeongjo.map((f) => _fontTile(context, f, state.isPremium)),
             const SizedBox(height: 12),
 
             // ── 필기체+ (Premium 4종) ──
-            _FontCategoryLabel(label: '필기체+'),
+            const _FontCategoryLabel(label: '필기체+'),
             const SizedBox(height: 8),
             ...premHandwriting.map((f) => _fontTile(context, f, state.isPremium)),
             const SizedBox(height: 12),
 
             // ── Serif 영문 (Premium 4종) ──
-            _FontCategoryLabel(label: 'Serif (영문)'),
+            const _FontCategoryLabel(label: 'Serif (영문)'),
             const SizedBox(height: 8),
             ...premSerif.map((f) => _fontTile(context, f, state.isPremium)),
           ],
@@ -1463,7 +1462,7 @@ void _showLogoutDialog(BuildContext context) {
   final isDark = context.read<AppState>().isDark;
   showDialog(
     context: context,
-    builder: (_) => Dialog(
+    builder: (dCtx) => Dialog(
       backgroundColor: isDark ? DesignTokens.bgDarkDeep : DesignTokens.bgIvory,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
       child: Padding(
@@ -1483,7 +1482,7 @@ void _showLogoutDialog(BuildContext context) {
               children: [
                 Expanded(
                   child: OutlinedButton(
-                    onPressed: () => Navigator.pop(context),
+                    onPressed: () => Navigator.pop(dCtx),
                     style: OutlinedButton.styleFrom(
                       side: BorderSide(color: isDark ? DesignTokens.ruleDarkStrong : DesignTokens.ruleStrong),
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
@@ -1497,10 +1496,11 @@ void _showLogoutDialog(BuildContext context) {
                 Expanded(
                   child: ElevatedButton(
                     onPressed: () {
-                      Navigator.of(context).pushAndRemoveUntil(
-                        MaterialPageRoute(builder: (_) => const LoginPage()),
-                        (route) => false,
-                      );
+                      // dCtx는 다이얼로그 자체의 컨텍스트 → 루트 네비게이터에서 정확히 pop
+                      Navigator.pop(dCtx);
+                      // 로그아웃 → _AppGate가 _MainNavigator 전체를 unmount하고
+                      // LoginPage로 슬라이드 전환
+                      context.read<AppState>().logout();
                     },
                     style: ElevatedButton.styleFrom(
                       backgroundColor: DesignTokens.terracotta,
@@ -1590,7 +1590,7 @@ class _NicknameRowState extends State<_NicknameRow> {
                           border: InputBorder.none,
                           enabledBorder: UnderlineInputBorder(
                               borderSide: BorderSide(color: isDark ? DesignTokens.ruleDark : DesignTokens.rule)),
-                          focusedBorder: UnderlineInputBorder(
+                          focusedBorder: const UnderlineInputBorder(
                               borderSide: BorderSide(color: DesignTokens.sage)),
                         ),
                       )

@@ -65,7 +65,7 @@ class SubscriptionService {
   // 스탠다드 → 프리미엄 업셀: 책장 8/10 이상
   bool isNearShelfLimitForUpsell(int currentShelfCount, SubscriptionTier tier) {
     if (tier != SubscriptionTier.standardMonthly &&
-        tier != SubscriptionTier.standardAnnual) return false;
+        tier != SubscriptionTier.standardAnnual) { return false; }
     return currentShelfCount >= 8;
   }
 
@@ -90,13 +90,13 @@ class SubscriptionService {
   String bookLimitMessage(int currentBookCount, SubscriptionTier tier) {
     final limit = SubscriptionLimits.maxBooks[tier]!;
     final remaining = getBooksRemaining(currentBookCount, tier);
-    return '${limit}권 중 ${currentBookCount}권을 저장했어요. ${remaining}권 남았어요.';
+    return '$limit권 중 $currentBookCount권을 저장했어요. $remaining권 남았어요.';
   }
 
   String highlightLimitMessage(
       int currentHighlightCount, SubscriptionTier tier) {
     final limit = SubscriptionLimits.maxHighlights[tier]!;
     final remaining = getHighlightsRemaining(currentHighlightCount, tier);
-    return '${limit}개 중 ${currentHighlightCount}개를 저장했어요. ${remaining}개 남았어요.';
+    return '$limit개 중 $currentHighlightCount개를 저장했어요. $remaining개 남았어요.';
   }
 }

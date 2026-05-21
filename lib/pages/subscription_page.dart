@@ -39,7 +39,7 @@ class _SubscriptionPageState extends State<SubscriptionPage> {
     if (_selected != SubscriptionTier.premiumAnnual) return '';
     if (state.subscriptionTier == SubscriptionTier.standardAnnual) {
       const remaining = 183; // Phase 3에서 실제 남은 일수로 교체
-      final diff = (AppConfig.premAnnualKrw / AppConfig.annualDays
+      const diff = (AppConfig.premAnnualKrw / AppConfig.annualDays
                   - AppConfig.stdAnnualKrw / AppConfig.annualDays) * remaining;
       return '남은 기간 차액 약 ${_krw(diff.round())}만 추가 결제';
     }
@@ -439,7 +439,7 @@ class _PlanCard extends StatelessWidget {
                                 .copyWith(letterSpacing: 0.8)),
                         ...badges.map((b) => _Badge(label: b, isPrem: _isPrem)),
                         if (_isCurrent)
-                          _Badge(label: '현재', isPrem: false, isActive: true),
+                          const _Badge(label: '현재', isPrem: false, isActive: true),
                       ],
                     ),
                     const SizedBox(height: 5),

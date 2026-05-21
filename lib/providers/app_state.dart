@@ -1,5 +1,10 @@
+import 'dart:async';
+import 'dart:convert';
+import 'dart:io' show File;
 import 'dart:math';
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
+import 'package:path_provider/path_provider.dart';
 import '../models/book.dart';
 import '../models/highlight.dart';
 import '../models/reading_report.dart';
@@ -15,6 +20,20 @@ class AppState extends ChangeNotifier {
     'terra': Color(0xFFB85C38),
     'amber': Color(0xFF8A6523),
   };
+
+  // ── 인증 상태 ─────────────────────────────────────────────────────────────
+  bool _isLoggedIn = false;
+  bool get isLoggedIn => _isLoggedIn;
+
+  void login() {
+    _isLoggedIn = true;
+    notifyListeners();
+  }
+
+  void logout() {
+    _isLoggedIn = false;
+    notifyListeners();
+  }
 
   // 첫 설치 시 빈 상태로 시작 (seed 데이터 없음)
   List<Book> _books = [];
@@ -379,6 +398,24 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
+  void removeHighlight(String id) {
+    _highlights = _highlights.where((h) => h.id != id).toList();
+    notifyListeners();
+  }
+
+  /// 목차가 없는 책의 문장 순서 변경 — draggedId를 targetId 앞에 삽입
+  void reorderHighlights(String draggedId, String targetId) {
+    if (draggedId == targetId) return;
+    final list  = List<Highlight>.from(_highlights);
+    final from  = list.indexWhere((h) => h.id == draggedId);
+    final to    = list.indexWhere((h) => h.id == targetId);
+    if (from == -1 || to == -1) return;
+    final item = list.removeAt(from);
+    list.insert(to > from ? to - 1 : to, item);
+    _highlights = list;
+    notifyListeners();
+  }
+
   /// 스캔 직후 '기존 도서에 추가' 시 사용 — 가장 최근 저장된 문장의 bookId를 변경
   void moveLastHighlightToBook(String targetBookId) {
     if (_highlights.isEmpty) return;
@@ -443,6 +480,13 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
+  void updateBookCoverBytes(String bookId, Uint8List bytes) {
+    _books = _books
+        .map((b) => b.id == bookId ? b.copyWith(coverImageBytes: bytes) : b)
+        .toList();
+    notifyListeners();
+  }
+
   void updateBookComment(String bookId, String comment) {
     _books = _books
         .map((b) => b.id == bookId ? b.copyWith(comment: comment) : b)
@@ -455,4 +499,94 @@ class AppState extends ChangeNotifier {
 
   String nextHighlightId() => 'h${_highlights.length + 1}';
   String nextBookId() => 'b${_books.length + 1}';
+
+  // ── 영속화 ────────────────────────────────────────────────────────────────
+  Timer? _saveDebounce;
+
+  /// 앱 시작 시 한 번 호출 — 저장된 상태를 복원
+  Future<void> loadState() async {
+    try {
+      final dir  = await getApplicationDocumentsDirectory();
+      final file = File('${dir.path}/app_state.json');
+      if (!file.existsSync()) return;
+      final j = jsonDecode(await file.readAsString()) as Map<String, dynamic>;
+
+      _isLoggedIn     = (j['isLoggedIn'] as bool?)        ?? false;
+      _nickname       = (j['nickname']   as String?)       ?? '';
+      _activeSlot     = (j['activeSlot'] as String?)       ?? 'sage';
+      _memoFont       = (j['memoFont']   as String?)       ?? 'gaegu';
+      _themeIntensity = ((j['themeIntensity'] as num?)     ?? 1.0).toDouble();
+      _exportFormat   = (j['exportFormat'] as String?)     ?? 'csv';
+      _reminderEnabled= (j['reminderEnabled'] as bool?)    ?? false;
+
+      final tmIdx = (j['themeMode'] as int?) ?? 0;
+      _themeMode  = AppThemeMode.values[tmIdx.clamp(0, AppThemeMode.values.length - 1)];
+
+      if (j['highlightSlotOrder'] != null) {
+        _highlightSlotOrder = List<String>.from(j['highlightSlotOrder'] as List);
+      }
+      if (j['reminderDays'] != null) {
+        _reminderDays = Set<int>.from(j['reminderDays'] as List);
+      }
+
+      _reminderStartTime = TimeOfDay(
+        hour:   (j['reminderStartHour']   as int?) ?? 9,
+        minute: (j['reminderStartMinute'] as int?) ?? 0,
+      );
+      _reminderEndTime = TimeOfDay(
+        hour:   (j['reminderEndHour']   as int?) ?? 21,
+        minute: (j['reminderEndMinute'] as int?) ?? 0,
+      );
+
+      if (j['books'] != null) {
+        _books = (j['books'] as List)
+            .map((e) => Book.fromJson(e as Map<String, dynamic>))
+            .toList();
+      }
+      if (j['highlights'] != null) {
+        _highlights = (j['highlights'] as List)
+            .map((e) => Highlight.fromJson(e as Map<String, dynamic>))
+            .toList();
+      }
+    } catch (_) {}
+  }
+
+  /// 상태 변경 시 자동 호출 (디바운스 500ms)
+  Future<void> _saveState() async {
+    try {
+      final dir  = await getApplicationDocumentsDirectory();
+      final file = File('${dir.path}/app_state.json');
+      await file.writeAsString(jsonEncode({
+        'isLoggedIn':          _isLoggedIn,
+        'nickname':            _nickname,
+        'activeSlot':          _activeSlot,
+        'themeMode':           _themeMode.index,
+        'memoFont':            _memoFont,
+        'themeIntensity':      _themeIntensity,
+        'exportFormat':        _exportFormat,
+        'highlightSlotOrder':  _highlightSlotOrder,
+        'reminderEnabled':     _reminderEnabled,
+        'reminderDays':        _reminderDays.toList(),
+        'reminderStartHour':   _reminderStartTime.hour,
+        'reminderStartMinute': _reminderStartTime.minute,
+        'reminderEndHour':     _reminderEndTime.hour,
+        'reminderEndMinute':   _reminderEndTime.minute,
+        'books':               _books.map((b) => b.toJson()).toList(),
+        'highlights':          _highlights.map((h) => h.toJson()).toList(),
+      }));
+    } catch (_) {}
+  }
+
+  @override
+  void notifyListeners() {
+    super.notifyListeners();
+    _saveDebounce?.cancel();
+    _saveDebounce = Timer(const Duration(milliseconds: 500), _saveState);
+  }
+
+  @override
+  void dispose() {
+    _saveDebounce?.cancel();
+    super.dispose();
+  }
 }

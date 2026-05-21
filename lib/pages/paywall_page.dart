@@ -18,19 +18,20 @@ class _PaywallPageState extends State<PaywallPage> {
   SubscriptionTier _selected = SubscriptionTier.standardAnnual;
   bool _loading = false;
 
-  // 혜택 문구는 lib/config/app_config.dart 의 stdFeatures 에서 관리합니다.
-  static List<PaywallFeature> get _features => AppConfig.stdFeatures;
+  bool get _isPremSelected => _selected == SubscriptionTier.premiumAnnual;
 
   @override
   Widget build(BuildContext context) {
     final state = context.watch<AppState>();
     final isDark = state.isDark;
-    final bg     = isDark ? DesignTokens.bgDark     : DesignTokens.bgIvory;
-    final ink    = isDark ? DesignTokens.inkDark     : DesignTokens.ink;
-    final mute   = isDark ? DesignTokens.inkDarkMute : DesignTokens.inkMute;
-    final faint  = isDark ? DesignTokens.inkDarkFaint: DesignTokens.inkFaint;
-    final cardBg = isDark ? DesignTokens.bgDarkDeep  : DesignTokens.bgIvoryDeep;
-    final rule   = isDark ? DesignTokens.ruleDark    : DesignTokens.rule;
+    final bg     = isDark ? DesignTokens.bgDark      : DesignTokens.bgIvory;
+    final ink    = isDark ? DesignTokens.inkDark      : DesignTokens.ink;
+    final mute   = isDark ? DesignTokens.inkDarkMute  : DesignTokens.inkMute;
+    final faint  = isDark ? DesignTokens.inkDarkFaint : DesignTokens.inkFaint;
+    final rule   = isDark ? DesignTokens.ruleDark     : DesignTokens.rule;
+
+    // CTA 색상: 프리미엄 선택 시 앰버, 스탠다드는 테라코타
+    final ctaColor = _isPremSelected ? DesignTokens.amber : DesignTokens.terracotta;
 
     return Scaffold(
       backgroundColor: bg,
@@ -44,14 +45,12 @@ class _PaywallPageState extends State<PaywallPage> {
                 children: [
                   GestureDetector(
                     onTap: () => Navigator.pop(context),
-                    child: Text('← 닫기',
-                        style: DesignTokens.hahmlet(13, color: mute)),
+                    child: Text('← 닫기', style: DesignTokens.hahmlet(13, color: mute)),
                   ),
                   const Spacer(),
-                  Text('STANDARD',
+                  Text('SUBSCRIBE',
                       style: DesignTokens.ptSans(10,
-                              weight: FontWeight.w700,
-                              color: DesignTokens.terracotta)
+                              weight: FontWeight.w700, color: DesignTokens.terracotta)
                           .copyWith(letterSpacing: 1.5)),
                   const SizedBox(width: 4),
                 ],
@@ -75,28 +74,6 @@ class _PaywallPageState extends State<PaywallPage> {
                             .copyWith(height: 1.5)),
                     const SizedBox(height: 24),
 
-                    // ── 혜택 카드 ──
-                    Container(
-                      decoration: BoxDecoration(
-                        color: cardBg,
-                        border: Border.all(color: rule),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Column(
-                        children: _features.asMap().entries.map((e) {
-                          final last = e.key == _features.length - 1;
-                          return _FeatureTile(
-                            feature: e.value,
-                            isDark: isDark,
-                            last: last,
-                            rule: rule,
-                          );
-                        }).toList(),
-                      ),
-                    ),
-
-                    const SizedBox(height: 24),
-
                     // ── PLAN 선택 ──
                     Text('PLAN',
                         style: DesignTokens.ptSans(10,
@@ -104,27 +81,44 @@ class _PaywallPageState extends State<PaywallPage> {
                             .copyWith(letterSpacing: 1.5)),
                     const SizedBox(height: 10),
 
+                    // 스탠다드 연간
                     _PlanTile(
                       tier: SubscriptionTier.standardAnnual,
                       selected: _selected,
                       isDark: isDark,
-                      title: '연간 구독',
+                      title: 'STANDARD 연간',
                       price: AppConfig.stdAnnualLabel,
                       sub: AppConfig.stdAnnualSubtitle,
                       badge: 'BEST',
-                      onTap: () => setState(
-                          () => _selected = SubscriptionTier.standardAnnual),
+                      isPrem: false,
+                      onTap: () => setState(() => _selected = SubscriptionTier.standardAnnual),
                     ),
                     const SizedBox(height: 8),
+
+                    // 스탠다드 월간
                     _PlanTile(
                       tier: SubscriptionTier.standardMonthly,
                       selected: _selected,
                       isDark: isDark,
-                      title: '월간 구독',
+                      title: 'STANDARD 월간',
                       price: AppConfig.stdMonthlyLabel,
                       sub: '매월 자동 갱신',
-                      onTap: () => setState(
-                          () => _selected = SubscriptionTier.standardMonthly),
+                      isPrem: false,
+                      onTap: () => setState(() => _selected = SubscriptionTier.standardMonthly),
+                    ),
+                    const SizedBox(height: 8),
+
+                    // 프리미엄 연간
+                    _PlanTile(
+                      tier: SubscriptionTier.premiumAnnual,
+                      selected: _selected,
+                      isDark: isDark,
+                      title: 'PREMIUM 연간',
+                      price: AppConfig.premAnnualLabel,
+                      sub: AppConfig.premAnnualSubtitle,
+                      badge: 'PREMIUM',
+                      isPrem: true,
+                      onTap: () => setState(() => _selected = SubscriptionTier.premiumAnnual),
                     ),
 
                     const SizedBox(height: 12),
@@ -133,6 +127,15 @@ class _PaywallPageState extends State<PaywallPage> {
                           style: DesignTokens.ptSans(10, color: faint)
                               .copyWith(letterSpacing: 0.1)),
                     ),
+                    const SizedBox(height: 28),
+
+                    // ── 플랜 비교표 ──
+                    Text('PLAN 비교',
+                        style: DesignTokens.ptSans(10,
+                                weight: FontWeight.w700, color: mute)
+                            .copyWith(letterSpacing: 1.5)),
+                    const SizedBox(height: 12),
+                    _PaywallCompareTable(isDark: isDark, rule: rule),
                     const SizedBox(height: 28),
                   ],
                 ),
@@ -143,11 +146,7 @@ class _PaywallPageState extends State<PaywallPage> {
             Container(
               decoration: BoxDecoration(
                 color: bg,
-                border: Border(
-                    top: BorderSide(
-                        color: isDark
-                            ? DesignTokens.ruleDark
-                            : DesignTokens.rule)),
+                border: Border(top: BorderSide(color: rule)),
               ),
               padding: const EdgeInsets.fromLTRB(22, 14, 22, 28),
               child: SizedBox(
@@ -155,7 +154,7 @@ class _PaywallPageState extends State<PaywallPage> {
                 child: ElevatedButton(
                   onPressed: _loading ? null : _handleSubscribe,
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: DesignTokens.terracotta,
+                    backgroundColor: ctaColor,
                     foregroundColor: DesignTokens.bgIvory,
                     shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(10)),
@@ -164,13 +163,12 @@ class _PaywallPageState extends State<PaywallPage> {
                   ),
                   child: _loading
                       ? const SizedBox(
-                          width: 18,
-                          height: 18,
+                          width: 18, height: 18,
                           child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              color: DesignTokens.bgIvory),
+                              strokeWidth: 2, color: DesignTokens.bgIvory),
                         )
-                      : Text('시작하기',
+                      : Text(
+                          _isPremSelected ? '프리미엄 시작하기' : '스탠다드 시작하기',
                           style: DesignTokens.hahmlet(15,
                               weight: FontWeight.w600,
                               color: DesignTokens.bgIvory)),
@@ -263,66 +261,12 @@ class _PaywallPageState extends State<PaywallPage> {
   }
 }
 
-// ─── Feature Tile ─────────────────────────────────────────────────────────────
-class _FeatureTile extends StatelessWidget {
-  final PaywallFeature feature;
-  final bool isDark;
-  final bool last;
-  final Color rule;
-  const _FeatureTile({
-    required this.feature,
-    required this.isDark,
-    required this.last,
-    required this.rule,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final ink  = isDark ? DesignTokens.inkDark     : DesignTokens.ink;
-    final mute = isDark ? DesignTokens.inkDarkMute  : DesignTokens.inkMute;
-
-    return Container(
-      padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
-      decoration: last
-          ? null
-          : BoxDecoration(border: Border(bottom: BorderSide(color: rule))),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          SizedBox(
-            width: 24,
-            child: Text(feature.icon,
-                style: DesignTokens.ptSans(14,
-                    weight: FontWeight.w700,
-                    color: DesignTokens.terracotta)),
-          ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(feature.title,
-                    style: DesignTokens.hahmlet(13,
-                        weight: FontWeight.w600, color: ink)),
-                const SizedBox(height: 2),
-                Text(feature.subtitle,
-                    style: DesignTokens.ptSans(11, color: mute)
-                        .copyWith(height: 1.4)),
-              ],
-            ),
-          ),
-          Icon(Icons.check_rounded, size: 17, color: DesignTokens.sage),
-        ],
-      ),
-    );
-  }
-}
-
 // ─── Plan Tile ────────────────────────────────────────────────────────────────
 class _PlanTile extends StatelessWidget {
   final SubscriptionTier tier;
   final SubscriptionTier selected;
   final bool isDark;
+  final bool isPrem;
   final String title;
   final String price;
   final String sub;
@@ -333,6 +277,7 @@ class _PlanTile extends StatelessWidget {
     required this.tier,
     required this.selected,
     required this.isDark,
+    required this.isPrem,
     required this.title,
     required this.price,
     required this.sub,
@@ -350,33 +295,40 @@ class _PlanTile extends StatelessWidget {
     final edgeBg  = isDark ? DesignTokens.bgDarkEdge  : DesignTokens.bgIvoryEdge;
     final ruleDef = isDark ? DesignTokens.ruleDark    : DesignTokens.rule;
 
+    // 프리미엄 카드 전용 색상
+    final premBg         = isDark ? const Color(0xFF3D2C18) : const Color(0xFFF5E8D0);
+    final premSelectedBg = isDark ? const Color(0xFF4F3820) : const Color(0xFFEDD9B0);
+    final premBorder     = isDark ? const Color(0xFF7A5A30) : const Color(0xFFC8A060);
+    final premBorderDef  = isDark ? const Color(0xFF5A4228) : const Color(0xFFDEC098);
+
+    final accentColor  = isPrem ? DesignTokens.amber : DesignTokens.terracotta;
+    final borderColor  = isPrem
+        ? (_isSelected ? premBorder : premBorderDef)
+        : (_isSelected ? DesignTokens.terracotta : ruleDef);
+    final bgColor      = isPrem
+        ? (_isSelected ? premSelectedBg : premBg)
+        : (_isSelected ? edgeBg : cardBg);
+
     return GestureDetector(
       onTap: onTap,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 180),
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
         decoration: BoxDecoration(
-          color: _isSelected ? edgeBg : cardBg,
-          border: Border.all(
-            color: _isSelected ? DesignTokens.terracotta : ruleDef,
-            width: _isSelected ? 1.5 : 1,
-          ),
+          color: bgColor,
+          border: Border.all(color: borderColor, width: _isSelected ? 1.5 : 1),
           borderRadius: BorderRadius.circular(10),
         ),
         child: Row(
           children: [
             AnimatedContainer(
               duration: const Duration(milliseconds: 180),
-              width: 18,
-              height: 18,
+              width: 18, height: 18,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
                 border: Border.all(
-                  color: _isSelected
-                      ? DesignTokens.terracotta
-                      : (isDark
-                          ? DesignTokens.inkDarkMute
-                          : DesignTokens.inkFaint),
+                  color: _isSelected ? accentColor
+                      : (isDark ? DesignTokens.inkDarkMute : DesignTokens.inkFaint),
                   width: _isSelected ? 5 : 1.5,
                 ),
                 color: isDark ? DesignTokens.bgDark : DesignTokens.bgIvory,
@@ -398,7 +350,7 @@ class _PlanTile extends StatelessWidget {
                           padding: const EdgeInsets.symmetric(
                               horizontal: 6, vertical: 2),
                           decoration: BoxDecoration(
-                            color: DesignTokens.terracotta,
+                            color: accentColor,
                             borderRadius: BorderRadius.circular(4),
                           ),
                           child: Text(badge!,
@@ -411,19 +363,128 @@ class _PlanTile extends StatelessWidget {
                     ],
                   ),
                   const SizedBox(height: 2),
-                  Text(sub,
-                      style: DesignTokens.ptSans(10, color: mute)
-                          .copyWith(letterSpacing: 0.1)),
+                  Text(sub, style: DesignTokens.ptSans(10, color: mute)
+                      .copyWith(letterSpacing: 0.1)),
                 ],
               ),
             ),
             Text(price,
                 style: DesignTokens.hahmlet(14,
                     weight: FontWeight.w600,
-                    color:
-                        _isSelected ? DesignTokens.terracotta : ink)),
+                    color: _isSelected ? accentColor : ink)),
           ],
         ),
+      ),
+    );
+  }
+}
+
+// ─── Paywall 비교표 ────────────────────────────────────────────────────────────
+class _PaywallCompareTable extends StatelessWidget {
+  final bool isDark;
+  final Color rule;
+  const _PaywallCompareTable({required this.isDark, required this.rule});
+
+  // AppConfig의 한도 상수에서 파생 — 수치 변경은 app_config.dart 한 곳만 수정
+  static const _rows = [
+    _CRow('책 저장',        free: '${AppConfig.freeMaxBooks}권',      std: '${AppConfig.stdMaxBooks}권',   prem: '무제한'),
+    _CRow('문장 저장',      free: '${AppConfig.freeMaxHighlights}개', std: '무제한',                       prem: '무제한'),
+    _CRow('책장 슬롯',      free: '${AppConfig.freeMaxShelves}개',    std: '${AppConfig.stdMaxShelves}개', prem: '무제한'),
+    _CRow('OCR 스캔',       free: '—',                                std: '무제한',                       prem: '무제한'),
+    _CRow('하이라이트 색상', free: '${AppConfig.freeMaxSlots}가지',   std: '${AppConfig.stdMaxSlots}가지', prem: '${AppConfig.premMaxSlots}슬롯+커스텀'),
+    _CRow('AI 독서 리포트',  free: '—',                                std: '기본',                         prem: '심층'),
+    _CRow('데이터 내보내기', free: '—',                                std: 'CSV',                          prem: 'CSV·PDF·MD'),
+    _CRow('화면 모드',       free: '1종',                              std: '3종',                          prem: '4종+강도조절'),
+    _CRow('메모 폰트',       free: '${AppConfig.freeMaxFonts}종',     std: '${AppConfig.stdMaxFonts}종',   prem: '${AppConfig.premMaxFonts}종'),
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    final bg = isDark ? DesignTokens.bgDarkDeep : DesignTokens.bgIvoryDeep;
+
+    return Container(
+      decoration: BoxDecoration(
+        color: bg,
+        border: Border.all(color: rule),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      clipBehavior: Clip.hardEdge,
+      child: Column(
+        children: [
+          // 헤더
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            decoration: BoxDecoration(border: Border(bottom: BorderSide(color: rule))),
+            child: Row(
+              children: [
+                const Expanded(child: SizedBox()),
+                _hCell('FREE',    color: isDark ? DesignTokens.inkDarkFaint : DesignTokens.inkFaint),
+                _hCell('STD',     color: DesignTokens.terracotta),
+                _hCell('PREMIUM', color: DesignTokens.amber),
+              ],
+            ),
+          ),
+          // 데이터 행
+          ..._rows.asMap().entries.map((e) => _CTableRow(
+                row: e.value,
+                isDark: isDark,
+                last: e.key == _rows.length - 1,
+                rule: rule,
+              )),
+        ],
+      ),
+    );
+  }
+
+  Widget _hCell(String label, {required Color color}) => SizedBox(
+        width: 58,
+        child: Text(label,
+            textAlign: TextAlign.center,
+            style: DesignTokens.ptSans(8, weight: FontWeight.w700, color: color)
+                .copyWith(letterSpacing: 0.8)),
+      );
+}
+
+class _CRow {
+  final String name, free, std, prem;
+  const _CRow(this.name, {required this.free, required this.std, required this.prem});
+}
+
+class _CTableRow extends StatelessWidget {
+  final _CRow row;
+  final bool isDark, last;
+  final Color rule;
+  const _CTableRow({required this.row, required this.isDark, required this.last, required this.rule});
+
+  Color _vc(String val, Color accent) {
+    if (val == '—') return isDark ? DesignTokens.inkDarkFaint : DesignTokens.inkFaint;
+    if (val == '무제한' || val == '✓') return accent;
+    return isDark ? DesignTokens.inkDarkMute : DesignTokens.inkMute;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final ink = isDark ? DesignTokens.inkDark : DesignTokens.ink;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+      decoration: last ? null
+          : BoxDecoration(border: Border(bottom: BorderSide(color: rule))),
+      child: Row(
+        children: [
+          Expanded(child: Text(row.name, style: DesignTokens.hahmlet(12, color: ink))),
+          SizedBox(width: 58,
+              child: Text(row.free, textAlign: TextAlign.center,
+                  style: DesignTokens.ptSans(10, color: _vc(row.free,
+                      isDark ? DesignTokens.inkDarkMute : DesignTokens.inkMute)))),
+          SizedBox(width: 58,
+              child: Text(row.std, textAlign: TextAlign.center,
+                  style: DesignTokens.ptSans(10, weight: FontWeight.w600,
+                      color: _vc(row.std, DesignTokens.terracotta)))),
+          SizedBox(width: 58,
+              child: Text(row.prem, textAlign: TextAlign.center,
+                  style: DesignTokens.ptSans(10, weight: FontWeight.w700,
+                      color: _vc(row.prem, DesignTokens.amber)))),
+        ],
       ),
     );
   }
@@ -447,7 +508,7 @@ void showLimitBottomSheet(BuildContext context, {required bool isHighlight}) {
     isScrollControlled: true,
     builder: (_) => _LimitSheet(
       isDark: isDark,
-      title: '${noun}이 가득 찼어요.',
+      title: '$noun이 가득 찼어요.',
       body: '$count$unit의 $noun이 쌓였어요.\n이 기억들은 그대로 있어요.\n더 저장하려면 구독이 필요해요.',
     ),
   );

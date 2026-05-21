@@ -1,7 +1,7 @@
-import 'dart:io';
+import 'dart:typed_data';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:path_provider/path_provider.dart';
 import 'package:provider/provider.dart';
 import '../config/design_tokens.dart';
 import '../models/book.dart';
@@ -26,7 +26,7 @@ class _AddBookPageState extends State<AddBookPage> {
   final _titleCtrl  = TextEditingController();
   final _authorCtrl = TextEditingController();
   final _picker = ImagePicker();
-  File? _coverImage;
+  Uint8List? _coverBytes;
 
   @override
   void dispose() {
@@ -38,17 +38,13 @@ class _AddBookPageState extends State<AddBookPage> {
   Future<void> _pickCoverImage() async {
     final file = await _picker.pickImage(source: ImageSource.gallery);
     if (file != null) {
-      setState(() => _coverImage = File(file.path));
+      final bytes = await file.readAsBytes();
+      setState(() {
+        _coverBytes = bytes;
+      });
     }
   }
 
-  Future<String?> _saveCoverImage(String bookId) async {
-    if (_coverImage == null) return null;
-    final dir = await getApplicationDocumentsDirectory();
-    final dest = File('${dir.path}/cover_$bookId.jpg');
-    await _coverImage!.copy(dest.path);
-    return dest.path;
-  }
 
   Future<void> _save() async {
     final state = context.read<AppState>();
@@ -102,15 +98,13 @@ class _AddBookPageState extends State<AddBookPage> {
         ? widget.targetPageIndex! * 10 + 1
         : 1 + (state.books.where((b) => b.shelf > 0 && b.shelf < 10).length ~/ 5) % 3;
 
-    final coverPath = await _saveCoverImage(bookId);
-
     state.addBook(Book(
       id: bookId,
       title: title,
       author: author,
       color: color,
       shelf: shelf,
-      coverImagePath: coverPath,
+      coverImageBytes: _coverBytes,
     ));
     state.clearTocSaved();
     if (mounted) Navigator.of(context).popUntil((r) => r.isFirst);
@@ -196,15 +190,15 @@ class _AddBookPageState extends State<AddBookPage> {
             color: DesignTokens.bgIvoryDeep,
             borderRadius: BorderRadius.circular(6),
             border: Border.all(
-              color: _coverImage != null ? DesignTokens.sage : DesignTokens.inkFaint,
+              color: _coverBytes != null ? DesignTokens.sage : DesignTokens.inkFaint,
             ),
           ),
           clipBehavior: Clip.hardEdge,
-          child: _coverImage != null
+          child: _coverBytes != null
               ? Stack(
                   fit: StackFit.expand,
                   children: [
-                    Image.file(_coverImage!, fit: BoxFit.cover),
+                    Image.memory(_coverBytes!, fit: BoxFit.cover),
                     Positioned(
                       bottom: 4, right: 4,
                       child: Container(
@@ -277,7 +271,7 @@ class _AddBookPageState extends State<AddBookPage> {
     return GestureDetector(
       onTap: () => Navigator.push(
         context,
-        MaterialPageRoute(builder: (_) => ScanPage(tocMode: true, archiveBookId: 'b_new')),
+        MaterialPageRoute(builder: (_) => const ScanPage(tocMode: true, archiveBookId: 'b_new')),
       ),
       child: Container(
         padding: const EdgeInsets.all(14),

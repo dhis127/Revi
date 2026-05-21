@@ -29,6 +29,28 @@ class Highlight {
     note: note ?? this.note,
     toc: toc ?? this.toc,
   );
+
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'bookId': bookId,
+    'text': text,
+    'page': page,
+    'slot': slot,
+    'date': date,
+    'note': note,
+    'toc': toc,
+  };
+
+  factory Highlight.fromJson(Map<String, dynamic> j) => Highlight(
+    id: j['id'] as String,
+    bookId: j['bookId'] as String,
+    text: j['text'] as String,
+    page: j['page'] as int,
+    slot: j['slot'] as String,
+    date: j['date'] as String,
+    note: (j['note'] as String?) ?? '',
+    toc: (j['toc'] as String?) ?? '',
+  );
 }
 
 const List<Highlight> seedHighlights = [

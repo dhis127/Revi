@@ -2,7 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../config/design_tokens.dart';
 import '../providers/app_state.dart';
-import 'home_page.dart';
+import '../widgets/google_auth.dart';
+import 'signup_page.dart';
 
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
@@ -14,14 +15,17 @@ class LoginPage extends StatefulWidget {
 class _LoginPageState extends State<LoginPage>
     with SingleTickerProviderStateMixin {
   bool _obscurePassword = true;
-  bool _googleLoading = false;
-  final _nicknameCtrl = TextEditingController();
   late AnimationController _swipeController;
   late Animation<double> _swipeAnim;
+  late FocusNode _emailFocus;
+  late FocusNode _passwordFocus;
+  bool _isKeyboardActive = false;
 
   @override
   void initState() {
     super.initState();
+    _emailFocus = FocusNode()..addListener(_onFocusChange);
+    _passwordFocus = FocusNode()..addListener(_onFocusChange);
     _swipeController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 3170),
@@ -40,17 +44,17 @@ class _LoginPageState extends State<LoginPage>
     ));
   }
 
-  void _goHome() {
-    final name = _nicknameCtrl.text.trim();
-    if (name.isNotEmpty) {
-      context.read<AppState>().setNickname(name);
-    }
-    Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const HomePage()));
+  void _goHome() => context.read<AppState>().login();
+
+  void _onFocusChange() {
+    final active = _emailFocus.hasFocus || _passwordFocus.hasFocus;
+    if (active != _isKeyboardActive) setState(() => _isKeyboardActive = active);
   }
 
   @override
   void dispose() {
-    _nicknameCtrl.dispose();
+    _emailFocus.dispose();
+    _passwordFocus.dispose();
     _swipeController.dispose();
     super.dispose();
   }
@@ -123,6 +127,12 @@ class _LoginPageState extends State<LoginPage>
                       ),
                     ),
 
+                    AnimatedContainer(
+                      duration: const Duration(milliseconds: 280),
+                      curve: Curves.easeInOut,
+                      height: _isKeyboardActive ? 0.0 : 30.0,
+                    ),
+
                     // ── 로그인 섹션 ──
                     Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -159,29 +169,6 @@ class _LoginPageState extends State<LoginPage>
                         ),
                         const SizedBox(height: 22),
 
-                        // 닉네임 입력창
-                        TextField(
-                          controller: _nicknameCtrl,
-                          style: DesignTokens.ptSansRegular(12.6),
-                          textInputAction: TextInputAction.next,
-                          decoration: InputDecoration(
-                            hintText: '닉네임 (예: 김독서)',
-                            hintStyle: DesignTokens.ptSansRegular(
-                                12.6, const Color(0xFFAAAAAA)),
-                            enabledBorder: const UnderlineInputBorder(
-                              borderSide:
-                                  BorderSide(color: Color(0xFFBBBBBB)),
-                            ),
-                            focusedBorder: const UnderlineInputBorder(
-                              borderSide:
-                                  BorderSide(color: DesignTokens.sage),
-                            ),
-                            contentPadding:
-                                const EdgeInsets.only(top: 9, bottom: 7),
-                          ),
-                        ),
-                        const SizedBox(height: 20),
-
                         // 이메일 입력창 (12 × 1.05 = 12.6)
                         TextField(
                           style: DesignTokens.ptSansRegular(12.6),
@@ -201,12 +188,14 @@ class _LoginPageState extends State<LoginPage>
                                 const EdgeInsets.only(top: 9, bottom: 7),
                           ),
                           keyboardType: TextInputType.emailAddress,
+                          focusNode: _emailFocus,
                         ),
                         const SizedBox(height: 20),
 
                         // 비밀번호 입력창 (12 × 1.05 = 12.6)
                         TextField(
                           obscureText: _obscurePassword,
+                          focusNode: _passwordFocus,
                           style: DesignTokens.ptSansRegular(12.6),
                           decoration: InputDecoration(
                             hintText: '비밀번호',
@@ -255,6 +244,27 @@ class _LoginPageState extends State<LoginPage>
                             ),
                           ),
                         ),
+                        const SizedBox(height: 18),
+
+                        // 로그인 버튼
+                        SizedBox(
+                          width: double.infinity,
+                          child: ElevatedButton(
+                            onPressed: _goHome,
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: const Color(0xFF3B2015),
+                              foregroundColor: DesignTokens.bgIvory,
+                              shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(10)),
+                              padding:
+                                  const EdgeInsets.symmetric(vertical: 15),
+                              elevation: 0,
+                            ),
+                            child: Text('로그인',
+                                style: DesignTokens.ptSansBold(
+                                    13.0, DesignTokens.bgIvory)),
+                          ),
+                        ),
                         const SizedBox(height: 20),
 
                         // 구분선 (또는) (9.4 × 1.05 = 9.9)
@@ -277,13 +287,16 @@ class _LoginPageState extends State<LoginPage>
                         ),
                         const SizedBox(height: 12),
 
-                        // Google 로그인 버튼 (12 × 1.05 = 12.6, 높이 살짝 증가)
+                        // Google 로그인 버튼 (12 × 1.05 = 12.6)
                         OutlinedButton(
-                          onPressed: _googleLoading ? null : () async {
-                            setState(() => _googleLoading = true);
-                            await Future.delayed(const Duration(milliseconds: 900));
-                            if (mounted) _goHome();
-                          },
+                          onPressed: () => showGoogleAccountPicker(
+                            context,
+                            onSelected: () => Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                  builder: (_) => const SignupPage()),
+                            ),
+                          ),
                           style: OutlinedButton.styleFrom(
                             backgroundColor: Colors.white,
                             side: const BorderSide(
@@ -294,18 +307,14 @@ class _LoginPageState extends State<LoginPage>
                             padding:
                                 const EdgeInsets.symmetric(vertical: 15),
                           ),
-                          child: _googleLoading
-                              ? const SizedBox(
-                                  width: 18, height: 18,
-                                  child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF3B2015)))
-                              : Row(
+                          child: Row(
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
-                              SizedBox(
+                              const SizedBox(
                                 width: 13,
                                 height: 13,
                                 child: CustomPaint(
-                                  painter: _GoogleLogoPainter(),
+                                  painter: GoogleLogoPainter(),
                                 ),
                               ),
                               const SizedBox(width: 8),
@@ -320,19 +329,26 @@ class _LoginPageState extends State<LoginPage>
                         const SizedBox(height: 18),
 
                         // 회원가입 (10.3 × 1.05 = 10.8)
-                        RichText(
-                          textAlign: TextAlign.center,
-                          text: TextSpan(
-                            style: DesignTokens.ptSansRegular(
-                                10.8, const Color(0xFF888888)),
-                            children: [
-                              const TextSpan(text: '아직 계정이 없으신가요? '),
-                              TextSpan(
-                                text: '회원가입',
-                                style: DesignTokens.ptSansBold(
-                                    10.8, DesignTokens.sage),
-                              ),
-                            ],
+                        GestureDetector(
+                          onTap: () => Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                                builder: (_) => const SignupPage()),
+                          ),
+                          child: RichText(
+                            textAlign: TextAlign.center,
+                            text: TextSpan(
+                              style: DesignTokens.ptSansRegular(
+                                  10.8, const Color(0xFF888888)),
+                              children: [
+                                const TextSpan(text: '아직 계정이 없으신가요? '),
+                                TextSpan(
+                                  text: '회원가입',
+                                  style: DesignTokens.ptSansBold(
+                                      10.8, DesignTokens.sage),
+                                ),
+                              ],
+                            ),
                           ),
                         ),
                       ],
@@ -388,72 +404,3 @@ class _LoginPageState extends State<LoginPage>
   }
 }
 
-class _GoogleLogoPainter extends CustomPainter {
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()..style = PaintingStyle.fill;
-
-    paint.color = const Color(0xFFEA4335);
-    final redPath = Path()
-      ..moveTo(size.width * 0.5, size.height * 0.198)
-      ..cubicTo(size.width * 0.566, size.height * 0.198, size.width * 0.624,
-          size.height * 0.221, size.width * 0.670, size.height * 0.258)
-      ..lineTo(size.width * 0.797, size.height * 0.131)
-      ..cubicTo(size.width * 0.716, size.height * 0.065, size.width * 0.613,
-          size.height * 0.021, size.width * 0.5, size.height * 0.021)
-      ..cubicTo(size.width * 0.309, size.height * 0.021, size.width * 0.147,
-          size.height * 0.135, size.width * 0.076, size.height * 0.298)
-      ..lineTo(size.width * 0.224, size.height * 0.413)
-      ..cubicTo(size.width * 0.261, size.height * 0.285, size.width * 0.370,
-          size.height * 0.198, size.width * 0.5, size.height * 0.198);
-    canvas.drawPath(redPath, paint);
-
-    paint.color = const Color(0xFF4285F4);
-    final bluePath = Path()
-      ..moveTo(size.width * 0.969, size.height * 0.51)
-      ..cubicTo(size.width * 0.969, size.height * 0.476, size.width * 0.966,
-          size.height * 0.443, size.width * 0.960, size.height * 0.411)
-      ..lineTo(size.width * 0.5, size.height * 0.411)
-      ..lineTo(size.width * 0.5, size.height * 0.598)
-      ..lineTo(size.width * 0.765, size.height * 0.598)
-      ..cubicTo(size.width * 0.753, size.height * 0.659, size.width * 0.718,
-          size.height * 0.712, size.width * 0.669, size.height * 0.749)
-      ..lineTo(size.width * 0.819, size.height * 0.865)
-      ..cubicTo(size.width * 0.900, size.height * 0.776, size.width * 0.969,
-          size.height * 0.653, size.width * 0.969, size.height * 0.51);
-    canvas.drawPath(bluePath, paint);
-
-    paint.color = const Color(0xFFFBBC05);
-    final yellowPath = Path()
-      ..moveTo(size.width * 0.224, size.height * 0.587)
-      ..cubicTo(size.width * 0.214, size.height * 0.562, size.width * 0.198,
-          size.height * 0.537, size.width * 0.198, size.height * 0.5)
-      ..cubicTo(size.width * 0.198, size.height * 0.470, size.width * 0.203,
-          size.height * 0.440, size.width * 0.214, size.height * 0.413)
-      ..lineTo(size.width * 0.076, size.height * 0.298)
-      ..cubicTo(size.width * 0.053, size.height * 0.363, size.width * 0.0,
-          size.height * 0.430, size.width * 0.0, size.height * 0.5)
-      ..cubicTo(size.width * 0.0, size.height * 0.581, size.width * 0.019,
-          size.height * 0.657, size.width * 0.053, size.height * 0.725)
-      ..lineTo(size.width * 0.224, size.height * 0.587);
-    canvas.drawPath(yellowPath, paint);
-
-    paint.color = const Color(0xFF34A853);
-    final greenPath = Path()
-      ..moveTo(size.width * 0.5, size.height * 0.979)
-      ..cubicTo(size.width * 0.614, size.height * 0.979, size.width * 0.710,
-          size.height * 0.941, size.width * 0.780, size.height * 0.876)
-      ..lineTo(size.width * 0.630, size.height * 0.760)
-      ..cubicTo(size.width * 0.592, size.height * 0.785, size.width * 0.548,
-          size.height * 0.802, size.width * 0.5, size.height * 0.802)
-      ..cubicTo(size.width * 0.370, size.height * 0.802, size.width * 0.261,
-          size.height * 0.715, size.width * 0.224, size.height * 0.587)
-      ..lineTo(size.width * 0.053, size.height * 0.725)
-      ..cubicTo(size.width * 0.147, size.height * 0.865, size.width * 0.309,
-          size.height * 0.979, size.width * 0.5, size.height * 0.979);
-    canvas.drawPath(greenPath, paint);
-  }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
-}
