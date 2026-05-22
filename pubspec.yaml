@@ -24,6 +24,9 @@ dependencies:
   image_picker: ^1.1.2
   camera: ^0.11.0
   permission_handler: ^11.3.1
+
+  # 소셜 로그인
+  google_sign_in: ^6.2.1
   # google_mlkit_text_recognition: ^0.13.0 # 실기기 전용 — 시뮬레이터 빌드 시 비활성화
 
   # 아이콘

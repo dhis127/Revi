@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:google_sign_in/google_sign_in.dart';
 import 'package:provider/provider.dart';
 import '../config/design_tokens.dart';
 import '../providers/app_state.dart';
@@ -20,6 +21,8 @@ class _LoginPageState extends State<LoginPage>
   late FocusNode _emailFocus;
   late FocusNode _passwordFocus;
   bool _isKeyboardActive = false;
+
+  final GoogleSignIn _googleSignIn = GoogleSignIn();
 
   @override
   void initState() {
@@ -45,6 +48,24 @@ class _LoginPageState extends State<LoginPage>
   }
 
   void _goHome() => context.read<AppState>().login();
+
+  Future<void> _handleGoogleSignIn() async {
+    try {
+      // 먼저 이전 로그인 세션 시도 (자동 로그인)
+      GoogleSignInAccount? account = await _googleSignIn.signInSilently();
+      // 자동 로그인 실패 시 수동 로그인
+      account ??= await _googleSignIn.signIn();
+      if (account != null) {
+        if (!mounted) return;
+        Navigator.pushReplacementNamed(context, '/home');
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('로그인 실패: $e')),
+      );
+    }
+  }
 
   void _onFocusChange() {
     final active = _emailFocus.hasFocus || _passwordFocus.hasFocus;
@@ -289,14 +310,7 @@ class _LoginPageState extends State<LoginPage>
 
                         // Google 로그인 버튼 (12 × 1.05 = 12.6)
                         OutlinedButton(
-                          onPressed: () => showGoogleAccountPicker(
-                            context,
-                            onSelected: () => Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                  builder: (_) => const SignupPage()),
-                            ),
-                          ),
+                          onPressed: _handleGoogleSignIn,
                           style: OutlinedButton.styleFrom(
                             backgroundColor: Colors.white,
                             side: const BorderSide(
