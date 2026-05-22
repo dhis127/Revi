@@ -4,6 +4,7 @@ import 'dart:ui' as ui;
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:permission_handler/permission_handler.dart';
 import 'package:provider/provider.dart';
 import '../config/design_tokens.dart';
 import '../models/highlight.dart';
@@ -105,6 +106,15 @@ class _ScanPageState extends State<ScanPage> {
   // ── 촬영 ─────────────────────────────────────────────────────────────────
   Future<void> _takePicture() async {
     if (_camCtrl == null || !_camReady) return;
+    final status = await Permission.camera.request();
+    if (!status.isGranted) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('카메라 권한이 필요합니다. 설정에서 허용해 주세요.')),
+        );
+      }
+      return;
+    }
     try {
       final file = await _camCtrl!.takePicture();
       if (!mounted) return;
