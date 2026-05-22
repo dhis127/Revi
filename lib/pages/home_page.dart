@@ -61,8 +61,7 @@ class _BookGrainPainter extends CustomPainter {
   @override
   bool shouldRepaint(covariant _BookGrainPainter old) => old.seed != seed;
 }
-const _spineWidths  = [22, 28, 18, 32, 24, 20, 30];
-const _spineHeights = [180, 168, 196, 156, 188, 172, 162];
+// 척추 너비·높이는 하이라이트 수 기반으로 동적 계산 (_SpineShelfState 참고)
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -1195,13 +1194,18 @@ class _SpineShelfState extends State<_SpineShelf> {
             children: [
               const SizedBox(width: 14),
               ...widget.books.asMap().entries.map((e) {
-                final s = _spineSeed(e.value.id);
+                final book       = e.value;
+                final count      = state.highlightsForBook(book.id).length;
+                // 하이라이트 수에 비례: 너비 최소 20 ~ 최대 60 px
+                final spineW     = (count * 2.0).clamp(20.0, 60.0);
+                // 높이는 기본 150 + 하이라이트 수 반영: 최소 140 ~ 최대 200 px
+                final spineH     = (count * 2.0 + 150.0).clamp(140.0, 200.0);
                 return Padding(
                   padding: const EdgeInsets.only(right: 4),
                   child: _DraggableSpineBook(
-                    book: e.value,
-                    width:  _spineWidths [s % _spineWidths.length ].toDouble(),
-                    height: _spineHeights[s % _spineHeights.length].toDouble(),
+                    book: book,
+                    width:  spineW,
+                    height: spineH,
                     index: e.key, totalBooks: widget.books.length,
                   ),
                 );
