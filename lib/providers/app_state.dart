@@ -428,6 +428,28 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// 임의 문장을 다른 책으로 이동 — bookId를 대상 책 id로 갱신
+  ///
+  /// 이 앱의 구조상 Book은 quotes 리스트를 직접 보유하지 않고,
+  /// Highlight.bookId 참조로 소속 책이 결정됩니다.
+  /// 따라서 아래 한 줄이 세 가지를 동시에 처리합니다:
+  ///   a. 원래 책에서 제거  (bookId가 더 이상 원래 책을 가리키지 않음)
+  ///   b. 대상 책에 추가    (bookId가 대상 책을 가리킴)
+  ///   c. bookId 필드 업데이트
+  void moveHighlightToBook(String highlightId, String targetBookId) {
+    final idx = _highlights.indexWhere((h) => h.id == highlightId);
+    if (idx == -1) return;
+    if (_highlights[idx].bookId == targetBookId) return; // 이미 같은 책
+    _highlights = [
+      for (int i = 0; i < _highlights.length; i++)
+        if (i == idx)
+          _highlights[i].copyWith(bookId: targetBookId)
+        else
+          _highlights[i],
+    ];
+    notifyListeners();
+  }
+
   // ── 책장 페이지 관리 ─────────────────────────────────────────────────────────
   // pageIndex × 10 = 해당 페이지의 책장 슬롯 기준 (0=표지, 1~3=책등)
   int _pageCount = 1;
