@@ -276,6 +276,30 @@ class _QuotesPageState extends State<QuotesPage> {
     );
   }
 
+  // ── 삭제 확인 다이얼로그 ─────────────────────────────────────────────────
+  Future<void> _confirmDelete(Highlight h, AppState state) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('문장 삭제'),
+        content: const Text('이 문장을 삭제할까요?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('취소'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text('삭제', style: TextStyle(color: Colors.red.shade400)),
+          ),
+        ],
+      ),
+    );
+    if (confirm == true && mounted) {
+      state.removeHighlight(h.id);
+    }
+  }
+
   // ── 드래그 가능한 카드 빌드 ───────────────────────────────────────────────
   Widget _buildDraggableCard(
     Highlight h,
@@ -290,6 +314,7 @@ class _QuotesPageState extends State<QuotesPage> {
       highlight: h,
       bookTitle: bookTitle,
       onTap: () => setState(() => _memoTarget = h),
+      onDelete: () => _confirmDelete(h, state),
     );
 
     // 목차 없을 때만 드롭 타겟으로 작동 (순서 변경)

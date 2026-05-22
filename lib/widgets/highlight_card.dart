@@ -8,12 +8,15 @@ class HighlightCard extends StatefulWidget {
   final Highlight highlight;
   final String? bookTitle;
   final VoidCallback onTap;
+  /// 제공 시 카드 우측에 삭제 아이콘이 표시됩니다.
+  final VoidCallback? onDelete;
 
   const HighlightCard({
     super.key,
     required this.highlight,
     this.bookTitle,
     required this.onTap,
+    this.onDelete,
   });
 
   @override
@@ -145,6 +148,17 @@ class _HighlightCardState extends State<HighlightCard> {
                                   style: DesignTokens.ptSans(10,
                                       color: DesignTokens.terracotta,
                                       weight: FontWeight.w700)),
+                            ],
+                            if (widget.onDelete != null) ...[
+                              const SizedBox(width: 8),
+                              GestureDetector(
+                                onTap: widget.onDelete,
+                                child: Icon(
+                                  Icons.delete_outline,
+                                  size: 16,
+                                  color: Colors.red.shade300,
+                                ),
+                              ),
                             ],
                           ],
                         ),
