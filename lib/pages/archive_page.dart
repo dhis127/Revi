@@ -48,7 +48,9 @@ class _ArchivePageState extends State<ArchivePage> {
   Future<void> _pickCover(Book book) async {
     final file = await _picker.pickImage(source: ImageSource.gallery);
     if (file != null && mounted) {
-      context.read<AppState>().updateBookCover(book.id, file.path);
+      final bytes = await file.readAsBytes();
+      if (!mounted) return;
+      context.read<AppState>().updateBookCoverBytes(book.id, bytes);
     }
   }
 

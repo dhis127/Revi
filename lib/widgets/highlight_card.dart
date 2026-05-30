@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../config/design_tokens.dart';
@@ -34,6 +35,13 @@ class _HighlightCardState extends State<HighlightCard> {
     final isDark = state.isDark;
     final textStyle = DesignTokens.hahmlet(14, color: isDark ? DesignTokens.inkDark : DesignTokens.ink).copyWith(height: 1.6);
 
+    // 각주 분리
+    const footnoteDelimiter = '\n\n(각주)\n';
+    final rawText = widget.highlight.text;
+    final hasFootnote = rawText.contains(footnoteDelimiter);
+    final mainText = hasFootnote ? rawText.split(footnoteDelimiter)[0] : rawText;
+    final footnoteText = hasFootnote ? rawText.split(footnoteDelimiter)[1] : null;
+
     return GestureDetector(
       onTap: widget.onTap,
       child: Container(
@@ -64,7 +72,7 @@ class _HighlightCardState extends State<HighlightCard> {
                     LayoutBuilder(
                       builder: (ctx, constraints) {
                         final tp = TextPainter(
-                          text: TextSpan(text: widget.highlight.text, style: textStyle),
+                          text: TextSpan(text: mainText, style: textStyle),
                           maxLines: 3,
                           textDirection: TextDirection.ltr,
                         )..layout(maxWidth: constraints.maxWidth);
@@ -74,7 +82,7 @@ class _HighlightCardState extends State<HighlightCard> {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              widget.highlight.text,
+                              mainText,
                               style: textStyle,
                               maxLines: _expanded ? null : 3,
                               overflow: _expanded
@@ -98,10 +106,37 @@ class _HighlightCardState extends State<HighlightCard> {
                                   ),
                                 ),
                               ),
+                            // ── 각주 (기울임꼴, 여백 포함) ──
+                            if (footnoteText != null) ...[
+                              const SizedBox(height: 12),
+                              Text(
+                                footnoteText,
+                                style: DesignTokens.hahmlet(12,
+                                    color: isDark
+                                        ? DesignTokens.inkDarkMute
+                                        : DesignTokens.inkMute)
+                                    .copyWith(
+                                      fontStyle: FontStyle.italic,
+                                      height: 1.55,
+                                    ),
+                              ),
+                            ],
                           ],
                         );
                       },
                     ),
+                    // ── 첨부 이미지 (그래프·표) ──
+                    if (widget.highlight.imagePath.isNotEmpty) ...[
+                      const SizedBox(height: 10),
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(6),
+                        child: Image.file(
+                          File(widget.highlight.imagePath),
+                          fit: BoxFit.contain,
+                          errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+                        ),
+                      ),
+                    ],
                     // ── 메모 ──
                     if (widget.highlight.note.isNotEmpty) ...[
                       const SizedBox(height: 8),

@@ -13,8 +13,6 @@ public class OcrPlugin: NSObject, FlutterPlugin {
     registrar.addMethodCallDelegate(instance, channel: channel)
   }
 
-  // UIImage.Orientation → CGImagePropertyOrientation 변환
-  // Vision은 CGImagePropertyOrientation을 요구하지만 UIImage는 별도 열거형을 사용함
   private func cgOrientation(from uiOrientation: UIImage.Orientation) -> CGImagePropertyOrientation {
     switch uiOrientation {
     case .up:            return .up
@@ -39,8 +37,6 @@ public class OcrPlugin: NSObject, FlutterPlugin {
         return
       }
 
-      // EXIF orientation을 Vision에 전달 — 미전달 시 raw 픽셀 기준으로 인식해
-      // 박스가 90° 어긋나고 인식 정확도가 0에 가까워짐
       let orientation = self.cgOrientation(from: image.imageOrientation)
       let requestHandler = VNImageRequestHandler(cgImage: cgImage,
                                                  orientation: orientation,
@@ -50,9 +46,9 @@ public class OcrPlugin: NSObject, FlutterPlugin {
       textRequest.recognitionLevel = .accurate
       textRequest.usesLanguageCorrection = true
       textRequest.recognitionLanguages = ["ko-KR", "en-US"]
-      textRequest.minimumTextHeight = 0.008  // 작은 글씨도 인식
+      // 0.003: 각주·소형 텍스트까지 인식 (기존 0.008은 각주를 놓침)
+      textRequest.minimumTextHeight = 0.003
 
-      // iOS 16+: 언어 자동 감지 활성화
       if #available(iOS 16.0, *) {
         textRequest.automaticallyDetectsLanguage = true
       }
@@ -65,70 +61,37 @@ public class OcrPlugin: NSObject, FlutterPlugin {
           return
         }
 
+        // ── 줄(line) 단위로 반환 ──────────────────────────────────────────────
+        // Vision은 observations를 읽기 순서(위→아래, 왼→오른)로 반환하므로
+        // 줄 단위를 그대로 사용하면 단어 단위보다 순서가 훨씬 정확함.
+        // 책 페이지가 휘어진 경우에도 줄 내부 텍스트는 Vision이 이미 올바르게 정렬함.
         var results: [[String: Any]] = []
         for observation in observations {
           guard let candidate = observation.topCandidates(1).first else { continue }
           let fullText = candidate.string.trimmingCharacters(in: .whitespacesAndNewlines)
-          guard fullText.count > 1 else { continue }
+          guard !fullText.isEmpty else { continue }
           let conf = Double(candidate.confidence)
+          let box  = observation.boundingBox
 
-          // 단어 단위 bounding box 추출
-          let wordItems = self.wordBoundingBoxes(candidate: candidate, text: fullText, confidence: conf)
-          if !wordItems.isEmpty {
-            results.append(contentsOf: wordItems)
-          } else {
-            // 단어 추출 실패 시 줄 단위로 폴백
-            let box = observation.boundingBox
-            results.append([
-              "text": fullText,
-              "x": Double(box.minX),
-              "y": Double(box.minY),
-              "w": Double(box.width),
-              "h": Double(box.height),
-              "confidence": conf,
-            ])
-          }
+          results.append([
+            "text":       fullText,
+            "x":          Double(box.minX),
+            "y":          Double(box.minY),
+            "w":          Double(box.width),
+            "h":          Double(box.height),
+            "confidence": conf,
+          ])
         }
 
         DispatchQueue.main.async { result(results) }
       } catch {
         DispatchQueue.main.async {
-          result(FlutterError(code: "OCR_ERROR", message: "Text recognition failed", details: error.localizedDescription))
+          result(FlutterError(code: "OCR_ERROR",
+                              message: "Text recognition failed",
+                              details: error.localizedDescription))
         }
       }
     }
-  }
-
-  // ── 단어 단위 bounding box ────────────────────────────────────────────────
-  private func wordBoundingBoxes(candidate: VNRecognizedText,
-                                 text: String,
-                                 confidence: Double) -> [[String: Any]] {
-    var items: [[String: Any]] = []
-    var searchPos = text.startIndex
-
-    for component in text.components(separatedBy: " ") {
-      guard !component.isEmpty, searchPos < text.endIndex else { continue }
-      let remaining = searchPos..<text.endIndex
-      guard let wordRange = text.range(of: component, options: [], range: remaining),
-            let rectObs = try? candidate.boundingBox(for: wordRange) else {
-        // 범위 찾기 실패 시 스킵 (searchPos는 유지)
-        continue
-      }
-      let box = rectObs.boundingBox
-      items.append([
-        "text": component,
-        "x": Double(box.minX),
-        "y": Double(box.minY),
-        "w": Double(box.width),
-        "h": Double(box.height),
-        "confidence": confidence,
-      ])
-      searchPos = wordRange.upperBound
-      if searchPos < text.endIndex {
-        searchPos = text.index(after: searchPos) // 공백 건너뜀
-      }
-    }
-    return items
   }
 
   public func handle(_ call: FlutterMethodCall, result: @escaping FlutterResult) {

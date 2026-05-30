@@ -7,6 +7,8 @@ class Highlight {
   final String date;
   final String note;
   final String toc;
+  /// 첨부 이미지(그래프·표 등) 파일 경로. 없으면 빈 문자열.
+  final String imagePath;
 
   const Highlight({
     required this.id,
@@ -17,9 +19,10 @@ class Highlight {
     required this.date,
     this.note = '',
     this.toc = '',
+    this.imagePath = '',
   });
 
-  Highlight copyWith({String? bookId, String? note, String? toc}) => Highlight(
+  Highlight copyWith({String? bookId, String? note, String? toc, String? imagePath}) => Highlight(
     id: id,
     bookId: bookId ?? this.bookId,
     text: text,
@@ -28,6 +31,7 @@ class Highlight {
     date: date,
     note: note ?? this.note,
     toc: toc ?? this.toc,
+    imagePath: imagePath ?? this.imagePath,
   );
 
   Map<String, dynamic> toJson() => {
@@ -39,6 +43,7 @@ class Highlight {
     'date': date,
     'note': note,
     'toc': toc,
+    'imagePath': imagePath,
   };
 
   factory Highlight.fromJson(Map<String, dynamic> j) => Highlight(
@@ -50,6 +55,7 @@ class Highlight {
     date: j['date'] as String,
     note: (j['note'] as String?) ?? '',
     toc: (j['toc'] as String?) ?? '',
+    imagePath: (j['imagePath'] as String?) ?? '',
   );
 }
 

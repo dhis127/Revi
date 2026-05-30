@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io' show File;
 import 'dart:math';
 import 'dart:typed_data';
+import 'package:flutter/foundation.dart' show compute;
 import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
 import '../models/book.dart';
@@ -598,28 +599,32 @@ class AppState extends ChangeNotifier {
     try {
       final dir  = await getApplicationDocumentsDirectory();
       final file = File('${dir.path}/app_state.json');
-      await file.writeAsString(jsonEncode({
-        'isLoggedIn':          _isLoggedIn,
-        'nickname':            _nickname,
-        'activeSlot':          _activeSlot,
-        'themeMode':           _themeMode.index,
-        'memoFont':            _memoFont,
-        'themeIntensity':      _themeIntensity,
-        'exportFormat':        _exportFormat,
-        'highlightSlotOrder':  _highlightSlotOrder,
-        'reminderEnabled':     _reminderEnabled,
-        'reminderDays':        _reminderDays.toList(),
-        'reminderStartHour':   _reminderStartTime.hour,
-        'reminderStartMinute': _reminderStartTime.minute,
-        'reminderEndHour':     _reminderEndTime.hour,
-        'reminderEndMinute':   _reminderEndTime.minute,
-        'subscriptionTier':    _subscriptionTier.index,
-        'pageCount':           _pageCount,
-        'pageNames':           _pageNames.map((k, v) => MapEntry(k.toString(), v)),
-        'shelfLabels':         _shelfLabels.map((k, v) => MapEntry(k.toString(), v)),
-        'books':               _books.map((b) => b.toJson()).toList(),
-        'highlights':          _highlights.map((h) => h.toJson()).toList(),
-      }));
+      // base64 인코딩 + jsonEncode를 백그라운드 isolate에서 실행
+      // → 메인 스레드 블로킹 방지
+      final payload = _StatePayload(
+        isLoggedIn:          _isLoggedIn,
+        nickname:            _nickname,
+        activeSlot:          _activeSlot,
+        themeMode:           _themeMode.index,
+        memoFont:            _memoFont,
+        themeIntensity:      _themeIntensity,
+        exportFormat:        _exportFormat,
+        highlightSlotOrder:  _highlightSlotOrder,
+        reminderEnabled:     _reminderEnabled,
+        reminderDays:        _reminderDays.toList(),
+        reminderStartHour:   _reminderStartTime.hour,
+        reminderStartMinute: _reminderStartTime.minute,
+        reminderEndHour:     _reminderEndTime.hour,
+        reminderEndMinute:   _reminderEndTime.minute,
+        subscriptionTier:    _subscriptionTier.index,
+        pageCount:           _pageCount,
+        pageNames:           Map.fromEntries(_pageNames.entries.map((e) => MapEntry(e.key.toString(), e.value))),
+        shelfLabels:         Map.fromEntries(_shelfLabels.entries.map((e) => MapEntry(e.key.toString(), e.value))),
+        books:               _books.map((b) => b.toJson()).toList(),
+        highlights:          _highlights.map((h) => h.toJson()).toList(),
+      );
+      final jsonStr = await compute(_encodeStatePayload, payload);
+      await file.writeAsString(jsonStr);
     } catch (_) {}
   }
 
@@ -636,3 +641,74 @@ class AppState extends ChangeNotifier {
     super.dispose();
   }
 }
+
+// ── isolate 전달용 데이터 클래스 ──────────────────────────────────────────────
+class _StatePayload {
+  final bool isLoggedIn;
+  final String nickname;
+  final String activeSlot;
+  final int themeMode;
+  final String memoFont;
+  final double themeIntensity;
+  final String exportFormat;
+  final List<String> highlightSlotOrder;
+  final bool reminderEnabled;
+  final List<int> reminderDays;
+  final int reminderStartHour;
+  final int reminderStartMinute;
+  final int reminderEndHour;
+  final int reminderEndMinute;
+  final int subscriptionTier;
+  final int pageCount;
+  final Map<String, String> pageNames;
+  final Map<String, String> shelfLabels;
+  final List<Map<String, dynamic>> books;
+  final List<Map<String, dynamic>> highlights;
+
+  const _StatePayload({
+    required this.isLoggedIn,
+    required this.nickname,
+    required this.activeSlot,
+    required this.themeMode,
+    required this.memoFont,
+    required this.themeIntensity,
+    required this.exportFormat,
+    required this.highlightSlotOrder,
+    required this.reminderEnabled,
+    required this.reminderDays,
+    required this.reminderStartHour,
+    required this.reminderStartMinute,
+    required this.reminderEndHour,
+    required this.reminderEndMinute,
+    required this.subscriptionTier,
+    required this.pageCount,
+    required this.pageNames,
+    required this.shelfLabels,
+    required this.books,
+    required this.highlights,
+  });
+}
+
+// ── compute용 top-level 함수 (메인 스레드 외부에서 JSON 인코딩) ────────────────
+String _encodeStatePayload(_StatePayload p) => jsonEncode({
+  'isLoggedIn':          p.isLoggedIn,
+  'nickname':            p.nickname,
+  'activeSlot':          p.activeSlot,
+  'themeMode':           p.themeMode,
+  'memoFont':            p.memoFont,
+  'themeIntensity':      p.themeIntensity,
+  'exportFormat':        p.exportFormat,
+  'highlightSlotOrder':  p.highlightSlotOrder,
+  'reminderEnabled':     p.reminderEnabled,
+  'reminderDays':        p.reminderDays,
+  'reminderStartHour':   p.reminderStartHour,
+  'reminderStartMinute': p.reminderStartMinute,
+  'reminderEndHour':     p.reminderEndHour,
+  'reminderEndMinute':   p.reminderEndMinute,
+  'subscriptionTier':    p.subscriptionTier,
+  'pageCount':           p.pageCount,
+  'pageNames':           p.pageNames,
+  'shelfLabels':         p.shelfLabels,
+  'books':               p.books,
+  'highlights':          p.highlights,
+});

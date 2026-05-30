@@ -227,7 +227,7 @@ class _SearchPageState extends State<SearchPage> {
                 ],
               ),
             ),
-            Text('${book.highlightCount}',
+            Text('${context.read<AppState>().highlightsForBook(book.id).length}',
                 style: DesignTokens.ptSans(10,
                     color: isDark ? DesignTokens.inkDarkFaint : DesignTokens.inkFaint)
                     .copyWith(letterSpacing: 0.5)),
