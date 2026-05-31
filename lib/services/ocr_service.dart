@@ -4,7 +4,7 @@ import 'package:flutter/services.dart';
 class OcrLine {
   final String text;
   final double x, y, w, h; // 0‥1 normalized, origin = bottom-left of image
-  final double confidence;  // Vision 인식 신뢰도 0.0–1.0
+  final double confidence; // Vision 인식 신뢰도 0.0–1.0
   const OcrLine({
     required this.text,
     required this.x,
@@ -18,11 +18,17 @@ class OcrLine {
 class OcrService {
   static const platform = MethodChannel('revi/ocr');
 
-  static Future<List<OcrLine>> recognizeText(String imagePath) async {
+  static Future<List<OcrLine>> recognizeText(
+    String imagePath, {
+    bool enhanced = false,
+  }) async {
     try {
       final result = await platform.invokeMethod<List<dynamic>>(
         'recognizeText',
-        {'path': imagePath},
+        {
+          'path': imagePath,
+          'enhanced': enhanced,
+        },
       );
       if (result == null) return [];
       return result.map((e) {

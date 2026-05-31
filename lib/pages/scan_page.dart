@@ -1,6 +1,6 @@
 import 'dart:async' show Timer;
 import 'dart:io';
-import 'dart:math' show min;
+import 'dart:math' show max, min;
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 import 'package:camera/camera.dart';
@@ -204,7 +204,7 @@ class _ScanPageState extends State<ScanPage> with WidgetsBindingObserver {
     } catch (_) {}
   }
 
-  // ── OCR (Apple Vision 기반) ──────────────────────────────────────────────
+  // ── OCR (Apple Vision 기반: 전체 페이지 박스/검토 UI용) ────────────────────
   Future<void> _runOcr(String imagePath) async {
     setState(() => _ocrRunning = true);
     try {
@@ -222,8 +222,8 @@ class _ScanPageState extends State<ScanPage> with WidgetsBindingObserver {
 
 
   // ── 형광펜 영역 → 크롭 기반 OCR → 텍스트 시트 ─────────────────────────────
-  // 기존 bbox 매핑 방식을 완전 제거. 획 그룹의 Y 범위로 이미지를 크롭하고
-  // 각 크롭에 대해 Vision OCR을 직접 실행.
+  // 획 그룹 Y 범위로 1차 위치를 잡되, 전체 페이지 OCR bbox로 크롭 높이를 보정한다.
+  // 이렇게 해야 크롭 경계에 걸린 글자가 잘려 Vision이 엉뚱한 글자로 읽는 일을 줄일 수 있다.
   //
   // 핵심 개선:
   //  • 획 Y 범위 자체가 크롭 경계 → 페이지 곡면·bbox 오차와 무관
@@ -284,18 +284,21 @@ class _ScanPageState extends State<ScanPage> with WidgetsBindingObserver {
       final groupData = <(double imgY1Ratio, String text)>[];
 
       for (final (groupMin, groupMax) in groups) {
-        final imgY1 = ((groupMin - pad - _layoutOy) * scaleY)
-            .clamp(0.0, _imageSize!.height);
-        final imgY2 = ((groupMax + pad - _layoutOy) * scaleY)
-            .clamp(imgY1, _imageSize!.height);
+        final cropRect = _cropRectForStrokeGroup(
+          groupMin: groupMin,
+          groupMax: groupMax,
+          estLineH: estLineH,
+          pad: pad,
+          scaleY: scaleY,
+        );
+        final imgY1 = cropRect.top;
+        final imgY2 = cropRect.bottom;
         if (imgY2 - imgY1 < 10) continue;
 
-        final tmpPath = await _cropToTempFile(
-          Rect.fromLTRB(0, imgY1, _imageSize!.width.toDouble(), imgY2),
-        );
+        final tmpPath = await _cropToTempFile(cropRect);
         if (tmpPath == null) continue;
 
-        final lines = await OcrService.recognizeText(tmpPath);
+        final lines = await OcrService.recognizeText(tmpPath, enhanced: true);
         try { await File(tmpPath).delete(); } catch (_) {}
         if (lines.isEmpty) continue;
 
@@ -383,6 +386,45 @@ class _ScanPageState extends State<ScanPage> with WidgetsBindingObserver {
       return text.substring(i).trim();
     }
     return null;
+  }
+
+  Rect _cropRectForStrokeGroup({
+    required double groupMin,
+    required double groupMax,
+    required double estLineH,
+    required double pad,
+    required double scaleY,
+  }) {
+    double top = groupMin - pad;
+    double bottom = groupMax + pad;
+
+    if (_ocrLines.isNotEmpty && _layoutDh > 0) {
+      final bandTop = groupMin - estLineH * 0.65;
+      final bandBottom = groupMax + estLineH * 0.65;
+      final matchedRects = <Rect>[];
+
+      for (int i = 0; i < _ocrLines.length; i++) {
+        final rect = _ocrLineRect(i);
+        final overlap = min(rect.bottom, bandBottom) - max(rect.top, bandTop);
+        final centerInside = rect.center.dy >= bandTop && rect.center.dy <= bandBottom;
+        final enoughOverlap = overlap > min(rect.height * 0.45, estLineH * 0.35);
+        if (centerInside || enoughOverlap) {
+          matchedRects.add(rect);
+        }
+      }
+
+      if (matchedRects.isNotEmpty) {
+        top = matchedRects.map((r) => r.top).reduce(min);
+        bottom = matchedRects.map((r) => r.bottom).reduce(max);
+        final linePad = max(4.0, estLineH * 0.18);
+        top -= linePad;
+        bottom += linePad;
+      }
+    }
+
+    final imgY1 = ((top - _layoutOy) * scaleY).clamp(0.0, _imageSize!.height);
+    final imgY2 = ((bottom - _layoutOy) * scaleY).clamp(imgY1, _imageSize!.height);
+    return Rect.fromLTRB(0, imgY1, _imageSize!.width.toDouble(), imgY2);
   }
 
   // ── 크롭 헬퍼: 이미지 픽셀 좌표 → 임시 PNG 파일 ────────────────────────────
