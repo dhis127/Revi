@@ -276,9 +276,9 @@ class _ScanPageState extends State<ScanPage> with WidgetsBindingObserver {
       groups.add((gMin, gMax));
 
       // ── 3. 그룹별: 크롭 → OCR → 텍스트 수집 ────────────────────────────────
-      // 수직 패딩: 글자가 잘리지 않을 최소한만 (너무 크면 인접 줄 오독 발생)
+      // 크롭은 넉넉히 잡고, OCR 후 원래 획 band와 다시 맞는 줄만 채택한다.
       final scaleY = _imageSize!.height / _layoutDh;
-      final pad    = (estLineH * 0.12).clamp(6.0, 20.0); // 최소 패딩
+      final pad    = (estLineH * 0.45).clamp(12.0, 48.0);
 
       // 각 그룹의 (imgY1 비율, OCR 텍스트) 저장
       final groupData = <(double imgY1Ratio, String text)>[];
@@ -302,15 +302,15 @@ class _ScanPageState extends State<ScanPage> with WidgetsBindingObserver {
         try { await File(tmpPath).delete(); } catch (_) {}
         if (lines.isEmpty) continue;
 
-        // Vision y 내림차순 = 위→아래 읽기 순서
-        // 크롭 경계(상단 7%, 하단 7%) OCR 결과 제거 → 잘린 글자 오독 방지
-        final filtered = lines
-            .where((l) => l.y > 0.07 && (l.y + l.h) < 0.93)
-            .toList()
-          ..sort((a, b) => b.y.compareTo(a.y));
-
-        // 필터 후 결과가 너무 적으면 필터 없이 전체 사용 (짧은 크롭 대비)
-        final used = filtered.isNotEmpty ? filtered : (lines..sort((a, b) => b.y.compareTo(a.y)));
+        final used = _selectLinesForStrokeBand(
+          lines: lines,
+          cropRect: cropRect,
+          groupMin: groupMin,
+          groupMax: groupMax,
+          estLineH: estLineH,
+          scaleY: scaleY,
+        );
+        if (used.isEmpty) continue;
         final text = used.map((l) => l.text.trim()).join(' ').trim();
         if (text.isNotEmpty) {
           groupData.add((imgY1 / _imageSize!.height, text));
@@ -416,7 +416,7 @@ class _ScanPageState extends State<ScanPage> with WidgetsBindingObserver {
       if (matchedRects.isNotEmpty) {
         top = matchedRects.map((r) => r.top).reduce(min);
         bottom = matchedRects.map((r) => r.bottom).reduce(max);
-        final linePad = max(4.0, estLineH * 0.18);
+        final linePad = max(6.0, estLineH * 0.38);
         top -= linePad;
         bottom += linePad;
       }
@@ -425,6 +425,72 @@ class _ScanPageState extends State<ScanPage> with WidgetsBindingObserver {
     final imgY1 = ((top - _layoutOy) * scaleY).clamp(0.0, _imageSize!.height);
     final imgY2 = ((bottom - _layoutOy) * scaleY).clamp(imgY1, _imageSize!.height);
     return Rect.fromLTRB(0, imgY1, _imageSize!.width.toDouble(), imgY2);
+  }
+
+  List<OcrLine> _selectLinesForStrokeBand({
+    required List<OcrLine> lines,
+    required Rect cropRect,
+    required double groupMin,
+    required double groupMax,
+    required double estLineH,
+    required double scaleY,
+  }) {
+    if (lines.isEmpty || cropRect.height <= 0) return [];
+
+    final cropH = cropRect.height;
+    final strokeTopPx = (((groupMin - _layoutOy) * scaleY) - cropRect.top)
+        .clamp(0.0, cropH);
+    final strokeBottomPx = (((groupMax - _layoutOy) * scaleY) - cropRect.top)
+        .clamp(0.0, cropH);
+    final strokeMin = min(strokeTopPx, strokeBottomPx);
+    final strokeMax = max(strokeTopPx, strokeBottomPx);
+    final bandPad = max(estLineH * scaleY * 0.55, cropH * 0.06);
+    final bandTop = (strokeMin - bandPad).clamp(0.0, cropH);
+    final bandBottom = (strokeMax + bandPad).clamp(0.0, cropH);
+    final bandHeight = max(1.0, bandBottom - bandTop);
+    final bandCenter = (bandTop + bandBottom) / 2.0;
+
+    Rect lineRect(OcrLine line) {
+      final top = (1.0 - line.y - line.h) * cropH;
+      final bottom = (1.0 - line.y) * cropH;
+      return Rect.fromLTRB(
+        line.x * cropRect.width,
+        top,
+        (line.x + line.w) * cropRect.width,
+        bottom,
+      );
+    }
+
+    final matched = <OcrLine>[];
+    for (final line in lines) {
+      if (line.text.trim().isEmpty || line.h < 0.006) continue;
+      final rect = lineRect(line);
+      final overlap = min(rect.bottom, bandBottom) - max(rect.top, bandTop);
+      final centerInside = rect.center.dy >= bandTop && rect.center.dy <= bandBottom;
+      final enoughOverlap = overlap > min(rect.height * 0.35, bandHeight * 0.35);
+      if (centerInside || enoughOverlap) {
+        matched.add(line);
+      }
+    }
+
+    if (matched.isNotEmpty) {
+      return matched..sort((a, b) => b.y.compareTo(a.y));
+    }
+
+    final sortedByDistance = lines
+        .where((line) => line.text.trim().isNotEmpty && line.h >= 0.006)
+        .toList()
+      ..sort((a, b) {
+        final da = (lineRect(a).center.dy - bandCenter).abs();
+        final db = (lineRect(b).center.dy - bandCenter).abs();
+        return da.compareTo(db);
+      });
+    if (sortedByDistance.isEmpty) return [];
+
+    final closest = sortedByDistance.first;
+    final distance = (lineRect(closest).center.dy - bandCenter).abs();
+    final maxDistance = max(estLineH * scaleY * 1.35, cropH * 0.35);
+    return distance <= maxDistance ? [closest] : [];
   }
 
   // ── 크롭 헬퍼: 이미지 픽셀 좌표 → 임시 PNG 파일 ────────────────────────────

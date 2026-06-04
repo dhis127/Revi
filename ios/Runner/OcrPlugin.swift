@@ -123,7 +123,7 @@ public class OcrPlugin: NSObject, FlutterPlugin {
     request.recognitionLevel = .accurate
     request.usesLanguageCorrection = true
     request.recognitionLanguages = ["ko-KR", "en-US"]
-    request.minimumTextHeight = enhanced ? 0.0 : 0.003
+    request.minimumTextHeight = enhanced ? 0.008 : 0.003
 
     if #available(iOS 16.0, *) {
       request.automaticallyDetectsLanguage = true
@@ -184,9 +184,40 @@ public class OcrPlugin: NSObject, FlutterPlugin {
     let scalarCount = line.text.unicodeScalars.count
     let replacementPenalty = Double(line.text.filter { $0 == "�" || $0 == "?" }.count) * 0.45
     let oddPunctuationPenalty = Double(line.text.filter { "{}[]|_~".contains($0) }.count) * 0.15
-    let lengthBonus = min(Double(scalarCount), 80.0) / 80.0
+    let lengthBonus = (min(Double(scalarCount), 80.0) / 80.0) * 0.35
     let supportBonus = min(Double(supportCount), 4.0) * 0.12
-    return line.confidence * 2.0 + lengthBonus + supportBonus - replacementPenalty - oddPunctuationPenalty
+    return line.confidence * 2.0
+      + lengthBonus
+      + supportBonus
+      - replacementPenalty
+      - oddPunctuationPenalty
+      - textQualityPenalty(line.text)
+  }
+
+  private func textQualityPenalty(_ text: String) -> Double {
+    var visibleCount = 0
+    var signalCount = 0
+    var oddCount = 0
+    let oddScalars = "{}[]|_~`^\\<>".unicodeScalars
+
+    for scalar in text.unicodeScalars {
+      if CharacterSet.whitespacesAndNewlines.contains(scalar) { continue }
+      visibleCount += 1
+
+      let value = scalar.value
+      let isHangul =
+        (0xAC00...0xD7A3).contains(value) ||
+        (0x1100...0x11FF).contains(value) ||
+        (0x3130...0x318F).contains(value)
+      let isSignal = CharacterSet.alphanumerics.contains(scalar) || isHangul
+      if isSignal { signalCount += 1 }
+      if oddScalars.contains(scalar) { oddCount += 1 }
+    }
+
+    if visibleCount == 0 { return 1.0 }
+    let signalRatio = Double(signalCount) / Double(visibleCount)
+    let lowSignalPenalty = signalRatio < 0.35 ? (0.35 - signalRatio) * 1.2 : 0.0
+    return Double(oddCount) * 0.18 + lowSignalPenalty
   }
 
   private func boxesLikelySameLine(_ a: CGRect, _ b: CGRect) -> Bool {
