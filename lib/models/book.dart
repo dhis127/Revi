@@ -12,6 +12,8 @@ class Book {
   final String? coverImagePath;
   final Uint8List? coverImageBytes;
   final String? comment;
+  /// 목차 OCR 텍스트 (여러 페이지 누적 가능). 없으면 빈 문자열.
+  final String tocText;
 
   const Book({
     required this.id,
@@ -24,19 +26,21 @@ class Book {
     this.coverImagePath,
     this.coverImageBytes,
     this.comment,
+    this.tocText = '',
   });
 
-  Book copyWith({int? shelf, int? highlightCount, String? coverImagePath, Uint8List? coverImageBytes, String? comment}) => Book(
+  Book copyWith({String? color, int? shelf, int? highlightCount, String? coverImagePath, Uint8List? coverImageBytes, String? comment, String? tocText}) => Book(
     id: id,
     title: title,
     author: author,
-    color: color,
+    color: color ?? this.color,
     shelf: shelf ?? this.shelf,
     highlightCount: highlightCount ?? this.highlightCount,
     lastDate: lastDate,
     coverImagePath: coverImagePath ?? this.coverImagePath,
     coverImageBytes: coverImageBytes ?? this.coverImageBytes,
     comment: comment ?? this.comment,
+    tocText: tocText ?? this.tocText,
   );
 
   Map<String, dynamic> toJson() => {
@@ -50,6 +54,7 @@ class Book {
     'coverImagePath': coverImagePath,
     'coverImageBytes': coverImageBytes != null ? base64Encode(coverImageBytes!) : null,
     'comment': comment,
+    'tocText': tocText,
   };
 
   factory Book.fromJson(Map<String, dynamic> j) => Book(
@@ -65,6 +70,7 @@ class Book {
         ? base64Decode(j['coverImageBytes'] as String)
         : null,
     comment: j['comment'] as String?,
+    tocText: (j['tocText'] as String?) ?? '',
   );
 }
 

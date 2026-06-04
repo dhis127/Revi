@@ -81,11 +81,14 @@ class _ScanPageState extends State<ScanPage> with WidgetsBindingObserver {
   bool   _memoOpen  = false;
   bool   _typeOpen  = false;
   bool   _editOpen  = false;   // OCR 결과 확인·수정 시트
+  bool   _tocReviewOpen = false; // 목차 인식 결과 확인 시트
+  String? _continuationBuffer; // 두 페이지에 걸친 문장 누적 (#2)
   String _memo      = '';
   String _typedText = '';
   final _memoCtrl  = TextEditingController();
   final _typeCtrl  = TextEditingController();
   final _editCtrl  = TextEditingController();
+  final _tocReviewCtrl = TextEditingController();
   final _picker    = ImagePicker();
 
   // ── 페이지 번호 ────────────────────────────────────────────────────────────
@@ -130,6 +133,7 @@ class _ScanPageState extends State<ScanPage> with WidgetsBindingObserver {
     _memoCtrl.dispose();
     _typeCtrl.dispose();
     _editCtrl.dispose();
+    _tocReviewCtrl.dispose();
     _pageCtrl.dispose();
     super.dispose();
   }
@@ -215,6 +219,11 @@ class _ScanPageState extends State<ScanPage> with WidgetsBindingObserver {
         _strokes = [];
         _ocrRunning = false;
       });
+      // 목차 모드: 전체 페이지 인식이 끝나면 곧바로 확인 시트를 띄움
+      if (widget.tocMode && lines.isNotEmpty) {
+        _tocReviewCtrl.text = _assembleAllLinesText();
+        setState(() => _tocReviewOpen = true);
+      }
     } catch (_) {
       if (mounted) setState(() => _ocrRunning = false);
     }
@@ -346,13 +355,18 @@ class _ScanPageState extends State<ScanPage> with WidgetsBindingObserver {
       final mainText = bodyGroups.join(' ... ');
 
       // 각주: 본문 끝 마커 추출 → '*3: 각주전문' 형식
-      final String fullText;
+      String fullText;
       if (fnText != null && fnText.isNotEmpty) {
         final marker = _extractMarkerFromText(mainText);
         final prefix = marker != null ? '$marker: ' : '';
         fullText = '$mainText$footnoteDelimiter$prefix$fnText';
       } else {
         fullText = mainText;
+      }
+
+      // 두 페이지 이어찍기(#2): 이전 페이지 문장이 있으면 앞에 이어붙임
+      if (_continuationBuffer != null && _continuationBuffer!.isNotEmpty) {
+        fullText = '${_continuationBuffer!} $fullText';
       }
 
       setState(() {
@@ -868,18 +882,36 @@ class _ScanPageState extends State<ScanPage> with WidgetsBindingObserver {
     );
   }
 
+  // ── 목차: 전체 페이지 줄을 읽기 순서대로 결합 ───────────────────────────────
+  String _assembleAllLinesText() {
+    // _ocrLines는 플러그인에서 이미 읽기 순서(위→아래)로 정렬됨.
+    // 목차는 줄 구조가 의미를 가지므로 줄바꿈으로 결합.
+    return _ocrLines
+        .map((l) => l.text.trim())
+        .where((t) => t.isNotEmpty)
+        .join('\n')
+        .trim();
+  }
+
   // ── 문장 저장 ─────────────────────────────────────────────────────────────
   void _save() {
     final state = context.read<AppState>();
     if (widget.tocMode) {
-      state.setTocSaved(widget.archiveBookId ?? 'b_new');
-      Navigator.pop(context);
+      // 전체 페이지 OCR 텍스트를 확인 시트로 — 수정·추가·재촬영 가능
+      if (!_captured || _ocrRunning) return;
+      _tocReviewCtrl.text = _assembleAllLinesText();
+      setState(() => _tocReviewOpen = true);
       return;
     }
-    if (_typedText.trim().isEmpty) {
+    // 저장 가능 조건: 문장 / 첨부 이미지 / 메모 중 하나라도 있으면 됨.
+    // (그래프·표를 이미지로만 저장하고 싶은 경우 텍스트 없이도 허용)
+    final hasText  = _typedText.trim().isNotEmpty;
+    final hasImage = _savedImagePath.isNotEmpty;
+    final hasMemo  = _memo.trim().isNotEmpty;
+    if (!hasText && !hasImage && !hasMemo) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('저장할 문장을 선택하거나 직접 입력해주세요'),
+          content: Text('문장을 선택하거나, 이미지 영역을 캡처하거나, 메모를 입력해주세요'),
           duration: Duration(seconds: 2),
         ),
       );
@@ -910,6 +942,44 @@ class _ScanPageState extends State<ScanPage> with WidgetsBindingObserver {
     } else {
       Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const AddBookPage(fromScan: true)));
     }
+  }
+
+  // ── 목차: 이 페이지 추가 후 완료 → add_book 복귀 ──────────────────────────
+  void _tocAddAndFinish() {
+    final state = context.read<AppState>();
+    state.appendPendingToc(_tocReviewCtrl.text, widget.archiveBookId ?? 'b_new');
+    Navigator.pop(context);
+  }
+
+  // ── 목차: 이 페이지 추가 후 한 장 더 촬영 (다중 페이지 목차 #7) ────────────
+  void _tocAddAndScanMore() {
+    final state = context.read<AppState>();
+    state.appendPendingToc(_tocReviewCtrl.text, widget.archiveBookId ?? 'b_new');
+    setState(() {
+      _tocReviewOpen = false;
+      _captured      = false;
+      _capturedBytes = null;
+      _imageSize     = null;
+      _ocrLines      = [];
+      _strokes       = [];
+    });
+  }
+
+  // ── 두 페이지 문장 이어찍기 (#2) ──────────────────────────────────────────
+  // 현재까지 조합된 문장을 버퍼에 저장하고 카메라로 돌아가 다음 페이지를 촬영.
+  // 다음 페이지 선택이 끝나면 버퍼 뒤에 이어붙여 하나의 하이라이트로 저장됨.
+  void _continueToNextPage() {
+    final text = _editCtrl.text.trim();
+    if (text.isEmpty) return;
+    setState(() {
+      _continuationBuffer = text;
+      _editOpen      = false;
+      _captured      = false;
+      _capturedBytes = null;
+      _imageSize     = null;
+      _ocrLines      = [];
+      _strokes       = [];
+    });
   }
 
   // ── 팔레트: 드래그 위치 → 슬롯 계산 ──────────────────────────────────────
@@ -965,6 +1035,32 @@ class _ScanPageState extends State<ScanPage> with WidgetsBindingObserver {
         if (_memoOpen) _buildMemoSheet(),
         if (_typeOpen) _buildTypeSheet(),
         if (_editOpen) _buildTextEditSheet(),
+        if (_tocReviewOpen) _buildTocReviewSheet(),
+        // 이어찍기 활성 배너 (#2) — 카메라로 돌아왔을 때 상태 표시
+        if (_continuationBuffer != null &&
+            !_editOpen && !_tocReviewOpen && !_memoOpen && !_typeOpen)
+          SafeArea(
+            child: Align(
+              alignment: Alignment.topCenter,
+              child: Container(
+                margin: const EdgeInsets.only(top: 52),
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+                decoration: BoxDecoration(
+                  color: DesignTokens.sage,
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.link, size: 14, color: Colors.white),
+                    const SizedBox(width: 6),
+                    Text('이어찍기 — 다음 페이지를 촬영하세요',
+                        style: DesignTokens.hahmlet(12, color: Colors.white)),
+                  ],
+                ),
+              ),
+            ),
+          ),
       ],
     );
   }
@@ -1090,7 +1186,8 @@ class _ScanPageState extends State<ScanPage> with WidgetsBindingObserver {
                 ),
               ),
             // 터치 핸들러 — 검토 모드(탭) vs 일반 모드(pan)
-            if (!_ocrRunning)
+            // 목차 모드(isToc)에서는 형광펜/크롭이 필요 없으므로 제스처 비활성
+            if (!_ocrRunning && !isToc)
               if (_reviewMode)
                 GestureDetector(
                   behavior: HitTestBehavior.opaque,
@@ -1579,7 +1676,11 @@ class _ScanPageState extends State<ScanPage> with WidgetsBindingObserver {
                                     color: const Color(0xD9FFF7EE), width: 2),
                               ),
                               child: Text(
-                                isToc ? '목차 저장' : '문장 저장',
+                                isToc
+                                    ? '목차 저장'
+                                    : (_savedImagePath.isNotEmpty && _typedText.trim().isEmpty
+                                        ? '이미지 저장'
+                                        : '문장 저장'),
                                 style: DesignTokens.hahmlet(15,
                                     weight: FontWeight.w600, color: Colors.white),
                                 textAlign: TextAlign.center,
@@ -1822,9 +1923,14 @@ class _ScanPageState extends State<ScanPage> with WidgetsBindingObserver {
                       ),
                     ]),
                     const SizedBox(height: 5),
-                    Text('OCR로 인식된 문장이에요. 저장 전에 직접 수정할 수 있어요.',
+                    Text(
+                        _continuationBuffer != null
+                            ? '이전 페이지 문장에 이어졌어요. 한 문장으로 저장됩니다.'
+                            : 'OCR로 인식된 문장이에요. 저장 전에 직접 수정할 수 있어요.',
                         style: DesignTokens.hahmlet(11,
-                            color: DesignTokens.inkMute)),
+                            color: _continuationBuffer != null
+                                ? DesignTokens.sage
+                                : DesignTokens.inkMute)),
                     const SizedBox(height: 10),
                     TextField(
                       controller: _editCtrl,
@@ -1893,35 +1999,169 @@ class _ScanPageState extends State<ScanPage> with WidgetsBindingObserver {
                       ],
                     ),
                     const SizedBox(height: 12),
-                    SizedBox(
-                      width: double.infinity,
-                      child: ElevatedButton(
-                        onPressed: () {
-                          final edited = _editCtrl.text.trim();
-                          if (edited.isEmpty) return;
-                          setState(() {
-                            _typedText  = edited;
-                            _pageNumber = int.tryParse(_pageCtrl.text.trim()) ?? 0;
-                            _strokes    = [];
-                            _ocrLines   = [];
-                            _editOpen   = false;
-                          });
-                          _save(); // 수정 완료 → 즉시 문장 저장 화면으로
-                        },
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: DesignTokens.ink,
-                          foregroundColor: DesignTokens.bgIvory,
-                          shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(8)),
-                          padding:
-                              const EdgeInsets.symmetric(vertical: 12),
-                          elevation: 0,
+                    Row(
+                      children: [
+                        // 두 페이지에 걸친 문장 — 다음 페이지 이어 찍기 (#2)
+                        Expanded(
+                          child: OutlinedButton(
+                            onPressed: () {
+                              if (_editCtrl.text.trim().isEmpty) return;
+                              _continueToNextPage();
+                            },
+                            style: OutlinedButton.styleFrom(
+                              side: const BorderSide(color: DesignTokens.sage),
+                              shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(8)),
+                              padding: const EdgeInsets.symmetric(vertical: 12),
+                            ),
+                            child: Text('다음 페이지 잇기',
+                                style: DesignTokens.hahmlet(13,
+                                    color: DesignTokens.sage)),
+                          ),
                         ),
-                        child: Text('확인',
-                            style: DesignTokens.hahmlet(14,
-                                weight: FontWeight.w600,
-                                color: DesignTokens.bgIvory)),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: ElevatedButton(
+                            onPressed: () {
+                              final edited = _editCtrl.text.trim();
+                              if (edited.isEmpty) return;
+                              setState(() {
+                                _typedText  = edited;
+                                _pageNumber = int.tryParse(_pageCtrl.text.trim()) ?? 0;
+                                _strokes    = [];
+                                _ocrLines   = [];
+                                _editOpen   = false;
+                                _continuationBuffer = null; // 이어찍기 버퍼 소진
+                              });
+                              _save(); // 수정 완료 → 즉시 문장 저장
+                            },
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: DesignTokens.ink,
+                              foregroundColor: DesignTokens.bgIvory,
+                              shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(8)),
+                              padding: const EdgeInsets.symmetric(vertical: 12),
+                              elevation: 0,
+                            ),
+                            child: Text('저장',
+                                style: DesignTokens.hahmlet(14,
+                                    weight: FontWeight.w600,
+                                    color: DesignTokens.bgIvory)),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  // ── 목차 인식 결과 확인 시트 ────────────────────────────────────────────────
+  // 전체 페이지 OCR 텍스트를 보여주고 수정·재촬영·다중 페이지 추가를 지원.
+  Widget _buildTocReviewSheet() {
+    final pending = context.read<AppState>().pendingTocText;
+    return GestureDetector(
+      onTap: () => setState(() => _tocReviewOpen = false),
+      child: Container(
+        color: Colors.black54,
+        child: Align(
+          alignment: Alignment.bottomCenter,
+          child: GestureDetector(
+            onTap: () {},
+            child: Material(
+              color: Colors.transparent,
+              child: Container(
+                decoration: const BoxDecoration(
+                  color: DesignTokens.bgIvory,
+                  borderRadius: BorderRadius.vertical(top: Radius.circular(18)),
+                  boxShadow: [BoxShadow(color: Colors.black26, blurRadius: 20, offset: Offset(0, -4))],
+                ),
+                padding: EdgeInsets.fromLTRB(22, 22, 22,
+                    MediaQuery.of(context).viewInsets.bottom + 28),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(children: [
+                      Text('목차 인식 결과',
+                          style: DesignTokens.hahmlet(15, weight: FontWeight.w600)),
+                      const Spacer(),
+                      GestureDetector(
+                        behavior: HitTestBehavior.opaque,
+                        onTap: () => setState(() => _tocReviewOpen = false),
+                        child: Padding(
+                          padding: const EdgeInsets.fromLTRB(12, 4, 4, 4),
+                          child: Text('×', style: DesignTokens.ptSans(22, color: DesignTokens.inkMute)),
+                        ),
                       ),
+                    ]),
+                    const SizedBox(height: 5),
+                    Text(
+                      pending.isEmpty
+                          ? '인식된 목차예요. 잘못 인식된 부분은 직접 고칠 수 있어요.'
+                          : '이전에 추가한 목차에 이어집니다. 잘못된 부분은 직접 고칠 수 있어요.',
+                      style: DesignTokens.hahmlet(11, color: DesignTokens.inkMute),
+                    ),
+                    const SizedBox(height: 10),
+                    TextField(
+                      controller: _tocReviewCtrl,
+                      maxLines: 9,
+                      minLines: 5,
+                      style: DesignTokens.lora(12).copyWith(height: 1.5),
+                      decoration: InputDecoration(
+                        hintText: '목차 텍스트가 여기에 표시됩니다…',
+                        hintStyle: DesignTokens.hahmlet(12, color: DesignTokens.inkFaint),
+                        filled: true,
+                        fillColor: DesignTokens.bgIvoryDeep,
+                        border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(8),
+                            borderSide: const BorderSide(color: DesignTokens.rule)),
+                        enabledBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(8),
+                            borderSide: const BorderSide(color: DesignTokens.rule)),
+                        focusedBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(8),
+                            borderSide: const BorderSide(color: DesignTokens.sage)),
+                        contentPadding: const EdgeInsets.all(12),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton(
+                            onPressed: _tocReviewCtrl.text.trim().isEmpty ? null : _tocAddAndScanMore,
+                            style: OutlinedButton.styleFrom(
+                              side: const BorderSide(color: DesignTokens.sage),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                              padding: const EdgeInsets.symmetric(vertical: 13),
+                            ),
+                            child: Text('한 장 더 촬영',
+                                style: DesignTokens.hahmlet(13, color: DesignTokens.sage)),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: ElevatedButton(
+                            onPressed: _tocReviewCtrl.text.trim().isEmpty ? null : _tocAddAndFinish,
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: DesignTokens.ink,
+                              foregroundColor: DesignTokens.bgIvory,
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                              padding: const EdgeInsets.symmetric(vertical: 13),
+                              elevation: 0,
+                            ),
+                            child: Text('목차 저장',
+                                style: DesignTokens.hahmlet(13,
+                                    weight: FontWeight.w600, color: DesignTokens.bgIvory)),
+                          ),
+                        ),
+                      ],
                     ),
                   ],
                 ),

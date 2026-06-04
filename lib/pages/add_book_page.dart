@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 import '../config/design_tokens.dart';
+import '../config/cover_palette.dart';
 import '../models/book.dart';
 import '../providers/app_state.dart';
 import 'scan_page.dart';
@@ -27,6 +28,16 @@ class _AddBookPageState extends State<AddBookPage> {
   final _authorCtrl = TextEditingController();
   final _picker = ImagePicker();
   Uint8List? _coverBytes;
+  String? _coverColorName; // 표지에서 추출한 책등 색
+
+  @override
+  void initState() {
+    super.initState();
+    // 새 책 작성 시작 — 이전에 중단된 목차 임시 데이터 정리
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) context.read<AppState>().clearPendingToc();
+    });
+  }
 
   @override
   void dispose() {
@@ -39,8 +50,12 @@ class _AddBookPageState extends State<AddBookPage> {
     final file = await _picker.pickImage(source: ImageSource.gallery);
     if (file != null) {
       final bytes = await file.readAsBytes();
+      // 표지 대표 색 → 가장 가까운 팔레트 색으로 책등 색 자동 결정
+      final colorName = await CoverPalette.nameFromImage(bytes);
+      if (!mounted) return;
       setState(() {
         _coverBytes = bytes;
+        _coverColorName = colorName;
       });
     }
   }
@@ -86,12 +101,12 @@ class _AddBookPageState extends State<AddBookPage> {
       return;
     }
 
-    // 책장 우드톤에 어울리는 9가지 색상 중 랜덤 배정
+    // 표지에서 추출한 색이 있으면 우선 사용, 없으면 팔레트 순환 배정
     const colors = [
       'navy', 'wine', 'forest', 'terra', 'cognac',
       'slate', 'amber', 'plum', 'sage',
     ];
-    final color = colors[state.books.length % colors.length];
+    final color = _coverColorName ?? colors[state.books.length % colors.length];
     final bookId = state.nextBookId();
     // targetPageIndex가 있으면 해당 페이지 첫 번째 책등 칸에 배치
     final shelf = widget.targetPageIndex != null
@@ -105,15 +120,16 @@ class _AddBookPageState extends State<AddBookPage> {
       color: color,
       shelf: shelf,
       coverImageBytes: _coverBytes,
+      tocText: state.pendingTocText,
     ));
     state.clearTocSaved();
+    state.clearPendingToc();
     if (mounted) Navigator.of(context).popUntil((r) => r.isFirst);
   }
 
   @override
   Widget build(BuildContext context) {
     final state = context.watch<AppState>();
-    final tocSaved = state.tocSavedForBookId != null;
 
     return GestureDetector(
       behavior: HitTestBehavior.translucent,
@@ -142,7 +158,7 @@ class _AddBookPageState extends State<AddBookPage> {
                     const SizedBox(height: 22),
                     _buildIsbnButton(),
                     const SizedBox(height: 14),
-                    _buildTocButton(tocSaved, state),
+                    _buildTocButton(state),
                     const SizedBox(height: 22),
                   ],
                 ),
@@ -267,44 +283,120 @@ class _AddBookPageState extends State<AddBookPage> {
     );
   }
 
-  Widget _buildTocButton(bool tocSaved, AppState state) {
-    return GestureDetector(
-      onTap: () => Navigator.push(
-        context,
-        MaterialPageRoute(builder: (_) => const ScanPage(tocMode: true, archiveBookId: 'b_new')),
-      ),
-      child: Container(
-        padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(
-          color: tocSaved ? DesignTokens.sage.withValues(alpha: 0.12) : DesignTokens.bgIvoryDeep,
-          border: Border.all(color: tocSaved ? DesignTokens.sage : DesignTokens.rule),
-          borderRadius: BorderRadius.circular(8),
-        ),
-        child: Row(
-          children: [
-            Icon(Icons.list_alt_outlined, size: 16, color: tocSaved ? DesignTokens.sage : DesignTokens.ink),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(tocSaved ? '목차 저장됨 ✓' : '목차 촬영하기',
-                      style: DesignTokens.hahmlet(13,
-                          color: tocSaved ? DesignTokens.sage : DesignTokens.inkSoft,
-                          weight: tocSaved ? FontWeight.w600 : FontWeight.w400)),
-                  const SizedBox(height: 2),
-                  Text(
-                    tocSaved
-                        ? '문장을 저장할 때 해당 챕터가 함께 기록돼요.'
-                        : '쪽수에 맞는 챕터를 자동으로 연결해요.',
-                    style: DesignTokens.hahmlet(11, color: DesignTokens.inkMute),
-                  ),
-                ],
+  void _openTocScan() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const ScanPage(tocMode: true, archiveBookId: 'b_new')),
+    );
+  }
+
+  Widget _buildTocButton(AppState state) {
+    final tocText = state.pendingTocText;
+
+    // 아직 목차를 찍지 않은 상태 — 촬영 유도 버튼
+    if (tocText.isEmpty) {
+      return GestureDetector(
+        onTap: _openTocScan,
+        child: Container(
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: DesignTokens.bgIvoryDeep,
+            border: Border.all(color: DesignTokens.rule),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Row(
+            children: [
+              const Icon(Icons.list_alt_outlined, size: 16, color: DesignTokens.ink),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('목차 촬영하기',
+                        style: DesignTokens.hahmlet(13, color: DesignTokens.inkSoft)),
+                    const SizedBox(height: 2),
+                    Text('여러 페이지에 걸친 목차도 이어서 담을 수 있어요.',
+                        style: DesignTokens.hahmlet(11, color: DesignTokens.inkMute)),
+                  ],
+                ),
               ),
-            ),
-            Text('›', style: DesignTokens.ptSans(16, color: DesignTokens.inkFaint)),
-          ],
+              Text('›', style: DesignTokens.ptSans(16, color: DesignTokens.inkFaint)),
+            ],
+          ),
         ),
+      );
+    }
+
+    // 목차 인식 완료 — 인식 결과 미리보기 + 재인식/장 추가 (#9, #7)
+    return Container(
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+      decoration: BoxDecoration(
+        color: DesignTokens.sage.withValues(alpha: 0.10),
+        border: Border.all(color: DesignTokens.sage),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.list_alt_outlined, size: 16, color: DesignTokens.sage),
+              const SizedBox(width: 8),
+              Text('목차 인식됨 ✓',
+                  style: DesignTokens.hahmlet(13,
+                      color: DesignTokens.sage, weight: FontWeight.w600)),
+            ],
+          ),
+          const SizedBox(height: 8),
+          // 인식된 OCR 텍스트 — 유저가 직접 확인 (#9)
+          Container(
+            width: double.infinity,
+            constraints: const BoxConstraints(maxHeight: 140),
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: DesignTokens.bgIvory,
+              border: Border.all(color: DesignTokens.rule),
+              borderRadius: BorderRadius.circular(6),
+            ),
+            child: SingleChildScrollView(
+              child: Text(tocText,
+                  style: DesignTokens.lora(11.5).copyWith(height: 1.5)),
+            ),
+          ),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton(
+                  onPressed: _openTocScan, // 장 추가 (이어서 누적)
+                  style: OutlinedButton.styleFrom(
+                    side: const BorderSide(color: DesignTokens.sage),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(7)),
+                    padding: const EdgeInsets.symmetric(vertical: 10),
+                  ),
+                  child: Text('＋ 장 추가',
+                      style: DesignTokens.hahmlet(12, color: DesignTokens.sage)),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: OutlinedButton(
+                  onPressed: () {
+                    state.clearPendingToc(); // 처음부터 다시 인식 (#9)
+                    _openTocScan();
+                  },
+                  style: OutlinedButton.styleFrom(
+                    side: const BorderSide(color: DesignTokens.inkFaint),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(7)),
+                    padding: const EdgeInsets.symmetric(vertical: 10),
+                  ),
+                  child: Text('다시 인식',
+                      style: DesignTokens.hahmlet(12, color: DesignTokens.inkMute)),
+                ),
+              ),
+            ],
+          ),
+        ],
       ),
     );
   }

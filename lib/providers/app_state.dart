@@ -41,6 +41,7 @@ class AppState extends ChangeNotifier {
   List<Highlight> _highlights = [];
   String _activeSlot = 'sage';
   String? _tocSavedForBookId;
+  String _pendingTocText = ''; // 새 책 생성 중 누적되는 목차 OCR 텍스트
   AppThemeMode _themeMode = AppThemeMode.light;
   String _memoFont = 'gaegu';
   double _themeIntensity = 1.0; // 0.3 ~ 1.0, 프리미엄 전용
@@ -308,6 +309,32 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
+  // ── 목차 OCR 텍스트 ──────────────────────────────────────────────────────
+  String get pendingTocText => _pendingTocText;
+
+  /// 목차 페이지 한 장의 OCR 결과를 누적 (여러 페이지 목차 지원 — #7)
+  void appendPendingToc(String text, String bookId) {
+    final t = text.trim();
+    if (t.isEmpty) return;
+    _pendingTocText =
+        _pendingTocText.isEmpty ? t : '$_pendingTocText\n$t';
+    _tocSavedForBookId = bookId;
+    notifyListeners();
+  }
+
+  /// 목차 텍스트 전체 교체 (재인식·수동 편집 — #9)
+  void setPendingToc(String text, String bookId) {
+    _pendingTocText = text.trim();
+    _tocSavedForBookId = _pendingTocText.isEmpty ? null : bookId;
+    notifyListeners();
+  }
+
+  void clearPendingToc() {
+    _pendingTocText = '';
+    _tocSavedForBookId = null;
+    notifyListeners();
+  }
+
   void toggleTheme() {
     final usable = AppThemeMode.values.where(canUseThemeMode).toList();
     final idx = usable.indexOf(_themeMode);
@@ -504,9 +531,11 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  void updateBookCoverBytes(String bookId, Uint8List bytes) {
+  void updateBookCoverBytes(String bookId, Uint8List bytes, {String? color}) {
     _books = _books
-        .map((b) => b.id == bookId ? b.copyWith(coverImageBytes: bytes) : b)
+        .map((b) => b.id == bookId
+            ? b.copyWith(coverImageBytes: bytes, color: color)
+            : b)
         .toList();
     notifyListeners();
   }

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 import '../config/design_tokens.dart';
+import '../config/cover_palette.dart';
 import '../models/book.dart';
 import '../models/highlight.dart';
 import '../providers/app_state.dart';
@@ -49,8 +50,10 @@ class _ArchivePageState extends State<ArchivePage> {
     final file = await _picker.pickImage(source: ImageSource.gallery);
     if (file != null && mounted) {
       final bytes = await file.readAsBytes();
+      // 표지 대표 색 → 책등 색 자동 갱신
+      final colorName = await CoverPalette.nameFromImage(bytes);
       if (!mounted) return;
-      context.read<AppState>().updateBookCoverBytes(book.id, bytes);
+      context.read<AppState>().updateBookCoverBytes(book.id, bytes, color: colorName);
     }
   }
 
