@@ -62,10 +62,6 @@ class _ScanPageState extends State<ScanPage> with WidgetsBindingObserver {
   bool    _willStraighten    = false; // true일 때 시각 피드백 표시
   Offset? _lastSigPanPos;             // 마지막 유의미 이동 위치
 
-  // ── 검토 모드 (획 선택 후 줄별 확인·수정) ────────────────────────────────────
-  bool     _reviewMode     = false;  // true: 선택 결과 시각 확인 화면
-  Set<int> _reviewSelected = {};     // 검토 중인 선택 줄 인덱스
-
   // ── 이미지 영역 선택 (그래프·표 캡처) ──────────────────────────────────────
   bool    _imgSelectMode  = false;   // 이미지 영역 선택 모드 ON/OFF
   Offset? _imgCropStart;             // 드래그 시작점 (화면 좌표)
@@ -205,7 +201,16 @@ class _ScanPageState extends State<ScanPage> with WidgetsBindingObserver {
         _captured = true;
       });
       _runOcr(file.path);
-    } catch (_) {}
+    } catch (_) {
+      // 촬영 실패 시 무반응 방지 — 사용자에게 알림
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('촬영에 실패했어요. 다시 시도해주세요.'),
+          duration: Duration(seconds: 2),
+        ),
+      );
+    }
   }
 
   // ── OCR (Apple Vision 기반: 전체 페이지 박스/검토 UI용) ────────────────────
@@ -537,137 +542,6 @@ class _ScanPageState extends State<ScanPage> with WidgetsBindingObserver {
     } catch (_) { return null; }
   }
 
-  // ── 검토 모드 → 줄 탭 토글 ──────────────────────────────────────────────────
-  void _toggleReviewLine(Offset localPos) {
-    for (int i = 0; i < _ocrLines.length; i++) {
-      if (_ocrLineRect(i).inflate(2).contains(localPos)) {
-        setState(() {
-          if (_reviewSelected.contains(i)) {
-            _reviewSelected.remove(i);
-          } else {
-            _reviewSelected.add(i);
-          }
-        });
-        return;
-      }
-    }
-  }
-
-  // ── 검토 확인 → 텍스트 시트 오픈 ────────────────────────────────────────────
-  void _confirmReview() {
-    if (_reviewSelected.isEmpty) return;
-
-    final allHSorted = _ocrLines.map((l) => l.h).toList()..sort();
-    final globalMedH = allHSorted[allHSorted.length ~/ 2];
-    final bodySelected = <int>{};
-    final fnSelected   = <int>{};
-    for (final idx in _reviewSelected) {
-      final ln = _ocrLines[idx];
-      if (ln.h < globalMedH * 0.82 && ln.y < 0.40) {
-        fnSelected.add(idx);
-      } else {
-        bodySelected.add(idx);
-      }
-    }
-
-    if (bodySelected.isEmpty) {
-      setState(() {
-        _editCtrl.text = _assembleSelectedText(_reviewSelected);
-        _reviewMode    = false;
-        _editOpen      = true;
-      });
-      return;
-    }
-
-    String? fnBody;
-    if (fnSelected.isNotEmpty) {
-      final sorted = fnSelected.toList()
-        ..sort((a, b) => _ocrLines[b].y.compareTo(_ocrLines[a].y));
-      fnBody = sorted
-          .map((i) => _ocrLines[i].text.trim())
-          .join(' ')
-          .replaceAll(RegExp(r'\s+'), ' ')
-          .trim();
-    } else {
-      fnBody = _detectFootnoteText(bodySelected);
-    }
-
-    final mainText = _assembleSelectedText(bodySelected);
-    final String fullText;
-    if (fnBody != null && fnBody.isNotEmpty) {
-      final marker = _extractFootnoteMarker(bodySelected);
-      final prefix = marker != null ? '$marker: ' : '';
-      fullText = '$mainText$footnoteDelimiter$prefix$fnBody';
-    } else {
-      fullText = mainText;
-    }
-
-    setState(() {
-      _editCtrl.text = fullText;
-      _reviewMode    = false;
-      _editOpen      = true;
-    });
-  }
-
-  // ── 줄 끝에 각주 표식이 있는지 확인 ─────────────────────────────────────────
-  // 역방향 스캔으로 regex 이스케이프 문제 없이 모든 OCR 오독 패턴을 처리.
-  // 감지 패턴: [기호 or 따옴표] + [선택적 숫자] at end of text
-  //   예: *3  †  "3  '3  ※  •2  ＊  (OCR이 *를 " 또는 '로 오독하는 경우 포함)
-  bool _lineHasFootnoteMarker(String text) {
-    final t = text.trim();
-    if (t.isEmpty) return false;
-    int i = t.length - 1;
-    // 끝 공백 스킵
-    while (i >= 0 && t[i] == ' ') { i--; }
-    // 숫자 0~3자리 스킵
-    int digits = 0;
-    while (i >= 0 && digits < 3 &&
-           t.codeUnitAt(i) >= 0x30 && t.codeUnitAt(i) <= 0x39) {
-      i--; digits++;
-    }
-    // 공백 스킵
-    while (i >= 0 && t[i] == ' ') { i--; }
-    if (i < 0) return false;
-    const markerCp = {
-      0x2A,   // *
-      0x2020, // †
-      0x2021, // ‡
-      0x203B, // ※
-      0x2022, // •
-      0xFF0A, // ＊
-      0x22,   // " (ASCII, OCR 오독)
-      0x27,   // ' (ASCII, OCR 오독)
-      0x2018, // ' (left single quote, OCR 오독)
-      0x2019, // ' (right single quote, OCR 오독)
-      0x201C, // " (left double quote, OCR 오독)
-      0x201D, // " (right double quote, OCR 오독)
-    };
-    return markerCp.contains(t.codeUnitAt(i));
-  }
-
-  // ── 본문 선택 줄에서 각주 마커 문자열 추출 ───────────────────────────────────
-  // _lineHasFootnoteMarker 와 동일한 역방향 스캔으로 마커 위치를 찾고 문자열 반환.
-  String? _extractFootnoteMarker(Set<int> bodySelected) {
-    for (final idx in bodySelected) {
-      final t = _ocrLines[idx].text.trim();
-      if (!_lineHasFootnoteMarker(t)) continue;
-      int i = t.length - 1;
-      while (i >= 0 && t[i] == ' ') { i--; }
-      int digits = 0;
-      while (i >= 0 && digits < 3 &&
-             t.codeUnitAt(i) >= 0x30 && t.codeUnitAt(i) <= 0x39) {
-        i--; digits++;
-      }
-      while (i >= 0 && t[i] == ' ') { i--; }
-      // i = 마커 기호 위치
-      if (i >= 0) return t.substring(i).trim();
-    }
-    return null;
-  }
-
-
-
-
   // ── 쪽수 자동 감지 ───────────────────────────────────────────────────────
   // 이미지 상단/하단에 있는 숫자 전용 텍스트를 쪽수로 인식
   void _autoDetectPageNumber() {
@@ -694,116 +568,8 @@ class _ScanPageState extends State<ScanPage> with WidgetsBindingObserver {
     }
   }
 
-  // ── 주석(각주) 자동 감지 및 텍스트 추출 ────────────────────────────────────
-  // 선택된 줄에 각주 표식(* † 숫자 등)이 있으면 페이지 하단 소형 텍스트를 반환.
+  // ── 각주 구분자 (저장 포맷: 본문 + delimiter + '*N: 각주 전문') ─────────────
   static const String footnoteDelimiter = '\n\n(각주)\n';
-
-  String? _detectFootnoteText(Set<int> selected) {
-    if (_ocrLines.isEmpty || selected.isEmpty) return null;
-
-    // 전체 글자 높이 중앙값
-    final allHSorted = _ocrLines.map((l) => l.h).toList()..sort();
-    final globalMedH = allHSorted[allHSorted.length ~/ 2];
-
-    // 1. 선택된 줄에 각주 표식이 있는지
-    //    _lineHasFootnoteMarker 사용: OCR 오독(* → “ ‘)을 포함한 역방향 스캔
-    bool hasMarker = false;
-    for (final idx in selected) {
-      if (_lineHasFootnoteMarker(_ocrLines[idx].text)) { hasMarker = true; break; }
-    }
-    if (!hasMarker) return null;
-
-    // 선택된 본문 줄들의 최하단 Vision y (각주는 이보다 아래에 위치)
-    double minSelY = 1.0;
-    for (final idx in selected) {
-      final y = _ocrLines[idx].y;
-      if (y < minSelY) minSelY = y;
-    }
-
-    // 2. 페이지 하단의 소형 텍스트 = 각주 본문
-    //    • 쪽수(숫자/공백만) 제외: Vision이 "246"을 "24 6"으로 반환하는 경우도 처리
-    //    • 챕터명(PART·CHAPTER 등) 제외
-    //    • 선택 본문보다 아래(y < minSelY)이고 본문보다 작은 글씨
-    final pageNumRe = RegExp(r'^[\d\s]+$');
-    final chapterRe = RegExp(r'^(PART|CHAPTER|부록|Chapter|Part)\b', caseSensitive: false);
-    final footnoteLines = _ocrLines.where((l) {
-      final t = l.text.trim();
-      if (t.isEmpty) return false;
-      if (l.h >= globalMedH * 0.82) return false; // 본문 크기 제외
-      if (l.y >= minSelY) return false;            // 선택 본문보다 위쪽이면 제외
-      if (l.y >= 0.40) return false;               // 페이지 하단 영역만 (0.34→0.40 확대)
-      if (pageNumRe.hasMatch(t)) return false;     // 쪽수 제외
-      if (chapterRe.hasMatch(t)) return false;     // 챕터 제목 제외
-      return true;
-    }).toList();
-    if (footnoteLines.isEmpty) return null;
-
-    // 읽기 순서: Vision y 내림차순(위→아래) → 텍스트 공백 결합
-    footnoteLines.sort((a, b) => b.y.compareTo(a.y));
-    final result = footnoteLines
-        .map((l) => l.text.trim())
-        .join(' ')
-        .replaceAll(RegExp(r'\s+'), ' ')
-        .trim();
-    return result.isEmpty ? null : result;
-  }
-
-  // ── 선택된 줄들을 읽기순으로 조합 ('...'로 생략 구간 표시) ──────────────────
-  // 줄 단위 OCR: 각 OcrLine = 책의 한 줄. 화면 top 오름차순(위→아래)으로 정렬 후,
-  // 연속된 선택 줄은 한 블록으로 공백 결합. 두 선택 줄 사이에 "선택되지 않은 줄"이
-  // 실제로 존재하면(= 내용 건너뜀) 블록을 끊고 '...'을 삽입.
-  String _assembleSelectedText(Set<int> selected) {
-    if (selected.isEmpty) return '';
-    final sorted = selected.toList()
-      ..sort((a, b) => _ocrLineRect(a).top.compareTo(_ocrLineRect(b).top));
-
-    final blocks = <String>[];
-    var cur = <String>[];
-    for (int k = 0; k < sorted.length; k++) {
-      if (k > 0 &&
-          _hasSkippedLineBetween(sorted[k - 1], sorted[k], selected)) {
-        if (cur.isNotEmpty) {
-          blocks.add(cur.join(' '));
-          cur = [];
-        }
-      }
-      cur.add(_ocrLines[sorted[k]].text.trim());
-    }
-    if (cur.isNotEmpty) blocks.add(cur.join(' '));
-
-    return blocks.join('\n...\n');
-  }
-
-  // 두 선택 줄 사이에 건너뛴 내용이 있는지 판단 → '...' 삽입 여부 결정.
-  //
-  // Vision 정규화 좌표(y: 0=하단, 1=상단)를 사용.
-  // 화면 좌표는 책 곡면에서 bbox가 겹쳐 gap이 음수가 되는 문제가 있음.
-  //
-  // 두 가지 조건 중 하나라도 참이면 건너뜀으로 판단:
-  //  1) Vision y 간격 > 중앙값 줄높이 × 1.5 (인접 줄: ≈1.2배, 한 줄 건너: ≈2.4배)
-  //  2) 두 줄 사이 Vision y 구간에 미선택 OCR 줄이 실제로 존재
-  bool _hasSkippedLineBetween(int aIdx, int bIdx, Set<int> selected) {
-    final aY = _ocrLines[aIdx].y; // Vision y (클수록 페이지 위)
-    final bY = _ocrLines[bIdx].y;
-    final topY    = aY > bY ? aY : bY;
-    final bottomY = aY < bY ? aY : bY;
-    final gap     = topY - bottomY;
-    if (gap <= 0) return false; // 순서 오류 방어
-
-    // 1) 간격 기반: 인접 줄 간격보다 1.5배 이상이면 건너뜀
-    final hs = _ocrLines.map((l) => l.h).toList()..sort();
-    final medH = hs.isEmpty ? 0.04 : hs[hs.length ~/ 2];
-    if (gap > medH * 1.5) return true;
-
-    // 2) 미선택 줄 존재 확인
-    for (int i = 0; i < _ocrLines.length; i++) {
-      if (selected.contains(i)) continue;
-      final ly = _ocrLines[i].y;
-      if (ly > bottomY && ly < topY) return true;
-    }
-    return false;
-  }
-
 
   // ── 갤러리에서 선택 ──────────────────────────────────────────────────────
   Future<void> _pickFromGallery() async {
@@ -923,24 +689,35 @@ class _ScanPageState extends State<ScanPage> with WidgetsBindingObserver {
     }
     final now     = DateTime.now();
     final dateStr = '${now.year}.${now.month.toString().padLeft(2,'0')}.${now.day.toString().padLeft(2,'0')}';
-    final bookId  = widget.fromArchive
-        ? (widget.archiveBookId ?? state.books.first.id)
-        : state.nextBookId();
+    // 아카이브 진입: 해당 책에 바로 귀속 + 목차 챕터 자동 연결.
+    // 새 스캔: 책이 아직 없으므로 미지정('')으로 저장 후
+    //          AddBookPage에서 새 책/기존 책에 연결 (가짜 ID 선점 금지 — 고아 방지)
+    final fromArchive = widget.fromArchive && widget.archiveBookId != null;
+    final bookId = fromArchive ? widget.archiveBookId! : '';
+    final highlightId = state.nextHighlightId();
     state.addHighlight(Highlight(
-      id: state.nextHighlightId(),
+      id: highlightId,
       bookId: bookId,
       text: _typedText.trim(),
       page: _pageNumber,
       slot: state.activeSlot,
       date: dateStr,
       note: _memo,
-      toc: '',
+      toc: fromArchive ? state.chapterForPage(bookId, _pageNumber) : '',
       imagePath: _savedImagePath,
     ));
     if (widget.fromArchive) {
       Navigator.pop(context);
     } else {
-      Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const AddBookPage(fromScan: true)));
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(
+          builder: (_) => AddBookPage(
+            fromScan: true,
+            pendingHighlightId: highlightId,
+          ),
+        ),
+      );
     }
   }
 
@@ -1142,8 +919,8 @@ class _ScanPageState extends State<ScanPage> with WidgetsBindingObserver {
           children: [
             // 촬영 이미지
             Image.memory(_capturedBytes!, fit: BoxFit.contain),
-            // 형광펜 스트로크 오버레이 (텍스트 모드, 검토 모드 아닐 때)
-            if (!_imgSelectMode && !_reviewMode)
+            // 형광펜 스트로크 오버레이 (텍스트 모드)
+            if (!_imgSelectMode)
               CustomPaint(
                 painter: _OcrOverlayPainter(
                   strokes: _strokes,
@@ -1156,46 +933,10 @@ class _ScanPageState extends State<ScanPage> with WidgetsBindingObserver {
               CustomPaint(
                 painter: _CropOverlayPainter(cropRect: _imgCropRect),
               ),
-            // ── 검토 모드 오버레이 ─────────────────────────────────────────
-            // 선택된 줄 = 형광펜 색 채우기 / 미선택 줄 = 흰 테두리(탭 가능 표시)
-            if (_reviewMode)
-              CustomPaint(
-                painter: _ReviewOverlayPainter(
-                  lineRects: List.generate(
-                    _ocrLines.length, (i) => _ocrLineRect(i)),
-                  selected: _reviewSelected,
-                  color: slotColor,
-                ),
-              ),
-            // 검토 모드 안내
-            if (_reviewMode)
-              Positioned(
-                top: 12, left: 0, right: 0,
-                child: Container(
-                  margin: const EdgeInsets.symmetric(horizontal: 24),
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                  decoration: BoxDecoration(
-                    color: const Color(0xCC0E0C0A),
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                  child: Text(
-                    '탭으로 줄 추가·제거  ·  초록=선택됨',
-                    style: DesignTokens.hahmlet(12, color: const Color(0xFFFFF7EE)),
-                    textAlign: TextAlign.center,
-                  ),
-                ),
-              ),
-            // 터치 핸들러 — 검토 모드(탭) vs 일반 모드(pan)
+            // 터치 핸들러 — 형광펜(pan) / 이미지 크롭(pan)
             // 목차 모드(isToc)에서는 형광펜/크롭이 필요 없으므로 제스처 비활성
             if (!_ocrRunning && !isToc)
-              if (_reviewMode)
-                GestureDetector(
-                  behavior: HitTestBehavior.opaque,
-                  onTapUp: (d) => _toggleReviewLine(d.localPosition),
-                  child: const SizedBox.expand(),
-                )
-              else
-            GestureDetector(
+              GestureDetector(
                 behavior: HitTestBehavior.opaque,
                 onPanStart: (d) {
                   if (_imgSelectMode) {
@@ -1262,8 +1003,8 @@ class _ScanPageState extends State<ScanPage> with WidgetsBindingObserver {
                       color: Color(0xCCFFF7EE), strokeWidth: 1.5),
                 ),
               ),
-            // 안내 문구 (텍스트 모드, 획 없을 때, 검토 모드 아닐 때)
-            if (!_ocrRunning && _strokes.isEmpty && !_imgSelectMode && !_reviewMode)
+            // 안내 문구 (텍스트 모드, 획 없을 때)
+            if (!_ocrRunning && _strokes.isEmpty && !_imgSelectMode)
               Positioned(
                 top: 12, left: 0, right: 0,
                 child: Text('형광펜으로 원하는 문장 위에 선을 그어주세요',
@@ -1452,12 +1193,8 @@ class _ScanPageState extends State<ScanPage> with WidgetsBindingObserver {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            // ── 검토 모드 안내바 ────────────────────────────────────────────
-            if (_reviewMode) ...[
-              const SizedBox(height: 2),
-            ]
             // ── 촬영 후: 텍스트 / 이미지 모드 탭 ──────────────────────────
-            else if (_captured && !isToc) ...[
+            if (_captured && !isToc) ...[
               _buildModeToggle(),
               const SizedBox(height: 10),
             ],
@@ -1473,28 +1210,6 @@ class _ScanPageState extends State<ScanPage> with WidgetsBindingObserver {
                       onTap: () => setState(() => _typeOpen = true),
                       child: const Icon(Icons.keyboard_outlined,
                           size: 20, color: Color(0xFFFFF7EE)),
-                    )
-                  : _reviewMode
-                  // 검토 모드 — 다시 그리기
-                  ? GestureDetector(
-                      behavior: HitTestBehavior.opaque,
-                      onTap: () => setState(() {
-                        _reviewMode = false;
-                        _reviewSelected = {};
-                      }),
-                      child: Container(
-                        height: 48,
-                        decoration: BoxDecoration(
-                          color: const Color(0x0FFFF7EE),
-                          border: Border.all(color: const Color(0x80FFF7EE)),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: const Center(
-                          child: Text('← 다시',
-                            style: TextStyle(fontSize: 13,
-                                color: Color(0xD9FFF7EE))),
-                        ),
-                      ),
                     )
                   : _imgSelectMode
                   // 이미지 모드 — 취소
@@ -1589,31 +1304,6 @@ class _ScanPageState extends State<ScanPage> with WidgetsBindingObserver {
                           ),
                         ),
                       )
-                    : _reviewMode
-                        // 검토 모드 — 확인
-                        ? GestureDetector(
-                            behavior: HitTestBehavior.opaque,
-                            onTap: _confirmReview,
-                            child: Container(
-                              constraints: const BoxConstraints(minWidth: 120, maxWidth: 200),
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 28, vertical: 16),
-                              decoration: BoxDecoration(
-                                color: _reviewSelected.isNotEmpty
-                                    ? DesignTokens.sage
-                                    : const Color(0x33FFF7EE),
-                                borderRadius: BorderRadius.circular(34),
-                                border: Border.all(
-                                    color: const Color(0xD9FFF7EE), width: 2),
-                              ),
-                              child: Text(
-                                '확인',
-                                style: DesignTokens.hahmlet(15,
-                                    weight: FontWeight.w600, color: Colors.white),
-                                textAlign: TextAlign.center,
-                              ),
-                            ),
-                          )
                     : _imgSelectMode
                         // 이미지 모드 — 영역 확인
                         ? GestureDetector(
@@ -2460,49 +2150,6 @@ class _OcrOverlayPainter extends CustomPainter {
 }
 
 // ── 이미지 크롭 영역 오버레이 ──────────────────────────────────────────────────
-// ── 검토 모드 오버레이 ──────────────────────────────────────────────────────────
-// 선택된 줄: 형광펜 색 채우기 + 테두리
-// 미선택 줄: 흰 테두리(탭 가능 영역 표시)
-class _ReviewOverlayPainter extends CustomPainter {
-  final List<Rect> lineRects;
-  final Set<int>   selected;
-  final Color      color;
-
-  const _ReviewOverlayPainter({
-    required this.lineRects,
-    required this.selected,
-    required this.color,
-  });
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final fillPaint = Paint()..color = color.withValues(alpha: 0.38);
-    final borderPaint = Paint()
-      ..color = color.withValues(alpha: 0.90)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 2.0;
-    final hintPaint = Paint()
-      ..color = Colors.white.withValues(alpha: 0.20)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 1.0;
-
-    for (int i = 0; i < lineRects.length; i++) {
-      final rr = RRect.fromRectAndRadius(
-          lineRects[i], const Radius.circular(3));
-      if (selected.contains(i)) {
-        canvas.drawRRect(rr, fillPaint);
-        canvas.drawRRect(rr, borderPaint);
-      } else {
-        canvas.drawRRect(rr, hintPaint);
-      }
-    }
-  }
-
-  @override
-  bool shouldRepaint(covariant _ReviewOverlayPainter old) =>
-      old.selected != selected || old.color != color;
-}
-
 class _CropOverlayPainter extends CustomPainter {
   final Rect? cropRect;
   const _CropOverlayPainter({this.cropRect});

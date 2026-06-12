@@ -31,9 +31,6 @@ class _SubscriptionPageState extends State<SubscriptionPage> {
         : plan;
   }
 
-  // 프리미엄 잠금 없음 — 무료 유저도 바로 프리미엄 구독 가능
-  bool _isPremiumLocked(AppState state) => false;
-
   // 차액 업그레이드 금액 계산 (Phase 1: 183일 남은 것으로 mock)
   String _proratedNote(AppState state) {
     if (_selected != SubscriptionTier.premiumAnnual) return '';
@@ -53,7 +50,6 @@ class _SubscriptionPageState extends State<SubscriptionPage> {
   Widget build(BuildContext context) {
     final state = context.watch<AppState>();
     final isDark = state.isDark;
-    final premLocked = _isPremiumLocked(state);
     final isCurrentPlan = _selected == state.subscriptionTier;
 
     // CTA 문구 결정
@@ -90,12 +86,17 @@ class _SubscriptionPageState extends State<SubscriptionPage> {
                 child: Row(
                   children: [
                     GestureDetector(
+                      behavior: HitTestBehavior.opaque,
                       onTap: () => Navigator.pop(context),
-                      child: Text('← 설정',
-                          style: DesignTokens.hahmlet(13,
-                              color: isDark
-                                  ? DesignTokens.inkDarkMute
-                                  : DesignTokens.inkMute)),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 8),
+                        // 설정 외 여러 경로(홈·페이월 등)에서 진입하므로 중립 표기
+                        child: Text('← 뒤로',
+                            style: DesignTokens.hahmlet(13,
+                                color: isDark
+                                    ? DesignTokens.inkDarkMute
+                                    : DesignTokens.inkMute)),
+                      ),
                     ),
                     const Spacer(),
                     Text('PLAN',
@@ -175,18 +176,14 @@ class _SubscriptionPageState extends State<SubscriptionPage> {
                         selected: _selected,
                         currentPlan: state.subscriptionTier,
                         isDark: isDark,
-                        locked: premLocked,
+                        locked: false,
                         title: 'PREMIUM ANNUAL',
                         price: AppConfig.premAnnualLabel,
                         priceSub: '/ 년',
-                        highlight: premLocked
-                            ? '스탠다드 구독 후 업그레이드 가능'
-                            : AppConfig.premAnnualSubtitle,
+                        highlight: AppConfig.premAnnualSubtitle,
                         badges: const ['PREMIUM'],
-                        onTap: premLocked
-                            ? () => _showPremiumLockedSnack(context)
-                            : () => setState(
-                                () => _selected = SubscriptionTier.premiumAnnual),
+                        onTap: () => setState(
+                            () => _selected = SubscriptionTier.premiumAnnual),
                       ),
 
                       const SizedBox(height: 26),
@@ -264,25 +261,6 @@ class _SubscriptionPageState extends State<SubscriptionPage> {
                 color: isDark ? DesignTokens.inkDarkMute : DesignTokens.inkMute)
             .copyWith(letterSpacing: 1.5),
       );
-
-  void _showPremiumLockedSnack(BuildContext context) {
-    final isDark = context.read<AppState>().isDark;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          '스탠다드 플랜 구독 후 프리미엄으로 업그레이드할 수 있어요.',
-          style: DesignTokens.hahmlet(12,
-              color: isDark ? DesignTokens.inkDark : DesignTokens.bgIvory),
-        ),
-        backgroundColor:
-            isDark ? DesignTokens.bgDarkDeep : DesignTokens.inkSoft,
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-        margin: const EdgeInsets.fromLTRB(18, 0, 18, 12),
-        duration: const Duration(seconds: 3),
-      ),
-    );
-  }
 
   Future<void> _handleSubscribe() async {
     setState(() => _loading = true);

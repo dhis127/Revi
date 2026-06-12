@@ -146,7 +146,9 @@ class _Masthead extends StatelessWidget {
                 'REVI REPORT',
                 style: DesignTokens.ptSans(9,
                         weight: FontWeight.w700,
-                        color: const Color(0xFF3B2015))
+                        color: isDark
+                            ? DesignTokens.inkDarkMute
+                            : const Color(0xFF3B2015))
                     .copyWith(letterSpacing: 2.5),
               ),
               const Spacer(),

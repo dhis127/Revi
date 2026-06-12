@@ -35,12 +35,24 @@ class SettingsPage extends StatelessWidget {
                   child: Row(
                     children: [
                       GestureDetector(
+                        behavior: HitTestBehavior.opaque,
                         onTap: () => Navigator.pop(context),
-                        child: Text('← 서재', style: DesignTokens.hahmlet(13, color: DesignTokens.inkMute)),
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 8),
+                          child: Text('← 서재',
+                              style: DesignTokens.hahmlet(13,
+                                  color: isDark
+                                      ? DesignTokens.inkDarkMute
+                                      : DesignTokens.inkMute)),
+                        ),
                       ),
                       const Spacer(),
                       Text('SETTINGS',
-                          style: DesignTokens.ptSans(10, weight: FontWeight.w700, color: DesignTokens.inkMute)
+                          style: DesignTokens.ptSans(10,
+                                  weight: FontWeight.w700,
+                                  color: isDark
+                                      ? DesignTokens.inkDarkMute
+                                      : DesignTokens.inkMute)
                               .copyWith(letterSpacing: 1.5)),
                       const SizedBox(width: 36),
                     ],
@@ -53,12 +65,18 @@ class SettingsPage extends StatelessWidget {
                     style: DesignTokens.hahmlet(26, weight: FontWeight.w600, color: isDark ? DesignTokens.inkDark : DesignTokens.ink).copyWith(letterSpacing: -0.2)),
               ),
 
+              // ── 저장 공간 (책·문장 사용량) ──
+              _Group(
+                title: '저장 공간',
+                children: [
+                  _UsageLimitSection(state: state, isDark: isDark),
+                ],
+              ),
+
               // ── 화면 표시 ──
               _Group(
                 title: '화면 표시',
                 children: [
-                  _UsageLimitSection(state: state, isDark: isDark),
-                  Divider(height: 1, color: isDark ? DesignTokens.ruleDark : DesignTokens.rule),
                   _Row(
                     label: '테마',
                     value: _getThemeModeName(state.themeMode),
@@ -106,7 +124,9 @@ class SettingsPage extends StatelessWidget {
                 children: [
                   _NicknameRow(state: state, isDark: isDark),
                   Divider(height: 1, color: isDark ? DesignTokens.ruleDark : DesignTokens.rule),
-                  const _Row(label: '이메일', value: 'dhis127@gmail.com'),
+                  _Row(
+                      label: '이메일',
+                      value: state.userEmail.isEmpty ? '—' : state.userEmail),
                   _OcrLanguageRow(state: state),
                   _ExportRow(state: state),
                   _Row(label: '로그아웃', showArrow: true, last: true, onTap: () {
@@ -602,10 +622,14 @@ class _SwatchRow extends StatelessWidget {
             ),
           ),
           GestureDetector(
+            behavior: HitTestBehavior.opaque,
             onTap: () => _showPicker(context),
-            child: Text('변경',
-                style: DesignTokens.hahmlet(11,
-                    color: DesignTokens.terracotta, weight: FontWeight.w700)),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
+              child: Text('변경',
+                  style: DesignTokens.hahmlet(11,
+                      color: DesignTokens.terracotta, weight: FontWeight.w700)),
+            ),
           ),
           if (canDelete) ...[
             const SizedBox(width: 12),
@@ -797,17 +821,17 @@ class _ExportRow extends StatelessWidget {
     final live   = context.watch<AppState>();
     final isDark = live.isDark;
     final isFree = live.availableExportFormats.isEmpty;
-    final isPrem = live.isPremium;
     final ink    = isDark ? DesignTokens.inkDark : DesignTokens.ink;
     final mute   = isDark ? DesignTokens.inkDarkMute : DesignTokens.inkMute;
     final faint  = isDark ? DesignTokens.inkDarkFaint : DesignTokens.inkFaint;
     final rule   = isDark ? DesignTokens.ruleDark : DesignTokens.rule;
 
     return GestureDetector(
+      // 무료: 구독 유도 / 구독자: 포맷 선택 시트 (스탠다드도 자신의 포맷 확인 가능)
       onTap: isFree
           ? () => Navigator.push(context,
               MaterialPageRoute(builder: (_) => const SubscriptionPage()))
-          : (isPrem ? () => _showFormatPicker(context, live) : null),
+          : () => _showFormatPicker(context, live),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
         decoration: BoxDecoration(
@@ -823,10 +847,9 @@ class _ExportRow extends StatelessWidget {
                 const SizedBox(width: 4),
                 Text('구독 필요', style: DesignTokens.hahmlet(12, color: faint)),
               ])
-            else
+            else ...[
               Text((_ExportRow._formatLabels[live.exportFormat] ?? live.exportFormat.toUpperCase()),
                   style: DesignTokens.hahmlet(12, color: mute)),
-            if (isPrem && !isFree) ...[
               const SizedBox(width: 6),
               Text('›', style: DesignTokens.ptSans(16, color: faint)),
             ],
@@ -1471,13 +1494,16 @@ void _showLogoutDialog(BuildContext context) {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text('로그아웃 하시겠습니까?',
+            // 홈 화면 로그아웃 다이얼로그와 동일한 카피·스타일 (일관성)
+            Text('정말 로그아웃 하시겠어요?',
                 style: DesignTokens.hahmlet(16, weight: FontWeight.w600,
-                    color: isDark ? DesignTokens.inkDark : DesignTokens.ink)),
+                    color: isDark ? DesignTokens.inkDark : DesignTokens.ink),
+                textAlign: TextAlign.center),
             const SizedBox(height: 8),
-            Text('로그인 화면으로 이동합니다.',
-                style: DesignTokens.ptSans(12,
-                    color: isDark ? DesignTokens.inkDarkMute : DesignTokens.inkMute)),
+            Text('다시 돌아오실 때까지, 모아둔 문장은 그 자리에 있을게요.',
+                style: DesignTokens.hahmlet(13,
+                    color: isDark ? DesignTokens.inkDarkMute : DesignTokens.inkMute),
+                textAlign: TextAlign.center),
             const SizedBox(height: 22),
             Row(
               children: [
@@ -1489,7 +1515,7 @@ void _showLogoutDialog(BuildContext context) {
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                       padding: const EdgeInsets.symmetric(vertical: 13),
                     ),
-                    child: Text('아니오', style: DesignTokens.hahmlet(13,
+                    child: Text('취소', style: DesignTokens.hahmlet(13,
                         color: isDark ? DesignTokens.inkDark : DesignTokens.ink)),
                   ),
                 ),
@@ -1504,16 +1530,16 @@ void _showLogoutDialog(BuildContext context) {
                       context.read<AppState>().logout();
                     },
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: DesignTokens.terracotta,
-                      foregroundColor: DesignTokens.bgIvory,
+                      backgroundColor: isDark ? DesignTokens.inkDark : DesignTokens.ink,
+                      foregroundColor: isDark ? DesignTokens.bgDark : DesignTokens.bgIvory,
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                       padding: const EdgeInsets.symmetric(vertical: 13),
                       elevation: 0,
                     ),
-                    child: Text('예',
-                        style: DesignTokens.hahmlet(14,
+                    child: Text('로그아웃',
+                        style: DesignTokens.hahmlet(13,
                             weight: FontWeight.w600,
-                            color: DesignTokens.bgIvory)),
+                            color: isDark ? DesignTokens.bgDark : DesignTokens.bgIvory)),
                   ),
                 ),
               ],
@@ -1958,17 +1984,22 @@ class _ColorPickerDialogState extends State<_ColorPickerDialog> {
       '#${_selected.toARGB32().toRadixString(16).substring(2).toUpperCase()}';
 
   // ── 공통 버튼 ────────────────────────────────────────────────────────────────
-  Widget _actionButtons(BuildContext context) => Row(
+  Widget _actionButtons(BuildContext context, bool isDark) => Row(
     children: [
       Expanded(
         child: OutlinedButton(
           onPressed: () => Navigator.pop(context),
           style: OutlinedButton.styleFrom(
-            side: const BorderSide(color: DesignTokens.ruleStrong),
+            side: BorderSide(
+                color: isDark
+                    ? DesignTokens.ruleDarkStrong
+                    : DesignTokens.ruleStrong),
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
             padding: const EdgeInsets.symmetric(vertical: 12),
           ),
-          child: Text('취소', style: DesignTokens.hahmlet(13)),
+          child: Text('취소',
+              style: DesignTokens.hahmlet(13,
+                  color: isDark ? DesignTokens.inkDark : DesignTokens.ink)),
         ),
       ),
       const SizedBox(width: 8),
@@ -1979,15 +2010,16 @@ class _ColorPickerDialogState extends State<_ColorPickerDialog> {
             Navigator.pop(context);
           },
           style: ElevatedButton.styleFrom(
-            backgroundColor: DesignTokens.ink,
-            foregroundColor: DesignTokens.bgIvory,
+            backgroundColor: isDark ? DesignTokens.inkDark : DesignTokens.ink,
+            foregroundColor: isDark ? DesignTokens.bgDark : DesignTokens.bgIvory,
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
             padding: const EdgeInsets.symmetric(vertical: 12),
             elevation: 0,
           ),
           child: Text('적용',
               style: DesignTokens.hahmlet(13,
-                  weight: FontWeight.w600, color: DesignTokens.bgIvory)),
+                  weight: FontWeight.w600,
+                  color: isDark ? DesignTokens.bgDark : DesignTokens.bgIvory)),
         ),
       ),
     ],
@@ -1995,15 +2027,16 @@ class _ColorPickerDialogState extends State<_ColorPickerDialog> {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = context.watch<AppState>().isDark;
     return widget.isPremium
-        ? _buildHsvDialog(context)
-        : _buildPaletteDialog(context);
+        ? _buildHsvDialog(context, isDark)
+        : _buildPaletteDialog(context, isDark);
   }
 
   // ── 무료·스탠다드: 24색 팔레트 다이얼로그 ──────────────────────────────────
-  Widget _buildPaletteDialog(BuildContext context) {
+  Widget _buildPaletteDialog(BuildContext context, bool isDark) {
     return Dialog(
-      backgroundColor: DesignTokens.bgIvory,
+      backgroundColor: isDark ? DesignTokens.bgDarkDeep : DesignTokens.bgIvory,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
       child: Padding(
         padding: const EdgeInsets.fromLTRB(20, 22, 20, 16),
@@ -2023,7 +2056,11 @@ class _ColorPickerDialogState extends State<_ColorPickerDialog> {
                 ),
                 const SizedBox(width: 10),
                 Text('색상 변경',
-                    style: DesignTokens.hahmlet(16, weight: FontWeight.w600)),
+                    style: DesignTokens.hahmlet(16,
+                        weight: FontWeight.w600,
+                        color: isDark
+                            ? DesignTokens.inkDark
+                            : DesignTokens.ink)),
               ],
             ),
             const SizedBox(height: 16),
@@ -2059,7 +2096,7 @@ class _ColorPickerDialogState extends State<_ColorPickerDialog> {
               },
             ),
             const SizedBox(height: 18),
-            _actionButtons(context),
+            _actionButtons(context, isDark),
           ],
         ),
       ),
@@ -2067,9 +2104,9 @@ class _ColorPickerDialogState extends State<_ColorPickerDialog> {
   }
 
   // ── 프리미엄: HSV 컬러피커 다이얼로그 ────────────────────────────────────────
-  Widget _buildHsvDialog(BuildContext context) {
+  Widget _buildHsvDialog(BuildContext context, bool isDark) {
     return Dialog(
-      backgroundColor: DesignTokens.bgIvory,
+      backgroundColor: isDark ? DesignTokens.bgDarkDeep : DesignTokens.bgIvory,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
       child: Padding(
         padding: const EdgeInsets.fromLTRB(18, 20, 18, 16),
@@ -2091,7 +2128,11 @@ class _ColorPickerDialogState extends State<_ColorPickerDialog> {
                 const SizedBox(width: 10),
                 Expanded(
                   child: Text('색상 변경',
-                      style: DesignTokens.hahmlet(16, weight: FontWeight.w600)),
+                      style: DesignTokens.hahmlet(16,
+                          weight: FontWeight.w600,
+                          color: isDark
+                              ? DesignTokens.inkDark
+                              : DesignTokens.ink)),
                 ),
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
@@ -2150,7 +2191,7 @@ class _ColorPickerDialogState extends State<_ColorPickerDialog> {
               },
             ),
             const SizedBox(height: 18),
-            _actionButtons(context),
+            _actionButtons(context, isDark),
           ],
         ),
       ),

@@ -90,10 +90,13 @@ class _MemoEditorState extends State<MemoEditor> {
                               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                               margin: const EdgeInsets.only(right: 8),
                               decoration: BoxDecoration(
-                                color: const Color(0xFFFFEEEE),
+                                color: DesignTokens.terracotta
+                                    .withValues(alpha: isDark ? 0.22 : 0.12),
                                 borderRadius: BorderRadius.circular(6),
                               ),
-                              child: Text('삭제', style: DesignTokens.ptSans(11, color: const Color(0xFFCC3333))),
+                              child: Text('삭제',
+                                  style: DesignTokens.ptSans(11,
+                                      color: DesignTokens.terracotta)),
                             ),
                           ),
                         GestureDetector(

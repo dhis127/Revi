@@ -166,10 +166,9 @@ class _SearchPageState extends State<SearchPage> {
         if (highlights.isNotEmpty) ...[
           _sectionHeader('문장 · ${highlights.length}', isDark),
           ...highlights.map((h) {
-            final book = state.books.firstWhere(
-              (b) => b.id == h.bookId,
-              orElse: () => state.books.first,
-            );
+            // 책 미지정·삭제된 책 폴백 (잘못된 책 제목 표시 방지)
+            final book =
+                state.books.where((b) => b.id == h.bookId).firstOrNull;
             return _highlightTile(h, book, q, isDark);
           }),
         ],
@@ -210,7 +209,8 @@ class _SearchPageState extends State<SearchPage> {
               width: 6,
               height: 36,
               decoration: BoxDecoration(
-                color: DesignTokens.slotColor(book.color),
+                // bookAccent: 10색 팔레트 전부 구분 (slotColor는 3색만 매핑)
+                color: DesignTokens.bookAccent(book.color),
                 borderRadius: BorderRadius.circular(3),
               ),
             ),
@@ -240,13 +240,17 @@ class _SearchPageState extends State<SearchPage> {
     );
   }
 
-  Widget _highlightTile(Highlight h, Book book, String q, bool isDark) {
+  Widget _highlightTile(Highlight h, Book? book, String q, bool isDark) {
     return GestureDetector(
-      onTap: () {
-        Navigator.pop(context);
-        Navigator.push(context,
-            MaterialPageRoute(builder: (_) => ArchivePage(bookId: h.bookId)));
-      },
+      onTap: book == null
+          ? null // 책 미지정 문장은 아카이브로 이동 불가
+          : () {
+              Navigator.pop(context);
+              Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                      builder: (_) => ArchivePage(bookId: h.bookId)));
+            },
       child: Container(
         margin: const EdgeInsets.fromLTRB(18, 0, 18, 2),
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
@@ -271,7 +275,7 @@ class _SearchPageState extends State<SearchPage> {
                   ),
                 ),
                 const SizedBox(width: 6),
-                Text(book.title,
+                Text(book?.title ?? '책 미지정',
                     style: DesignTokens.ptSans(10,
                         color: isDark ? DesignTokens.inkDarkMute : DesignTokens.inkMute)
                         .copyWith(letterSpacing: 0.5)),

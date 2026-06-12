@@ -16,6 +16,9 @@ dependencies:
   
   # 로컬 저장소
   path_provider: ^2.1.1
+
+  # 네트워크 (도서 표지 검색: 카카오 책 검색 + Google Books)
+  http: ^1.2.0
   
   # 상태관리
   provider: ^6.1.0

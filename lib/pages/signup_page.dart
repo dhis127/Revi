@@ -51,6 +51,7 @@ class _SignupPageState extends State<SignupPage> {
       if (!mounted) return;
       // pop → login 순서: context가 유효할 때 AppState를 먼저 캡처
       final appState = context.read<AppState>();
+      appState.setUserEmail(email);
       Navigator.popUntil(context, (route) => route.isFirst);
       appState.login();
     });

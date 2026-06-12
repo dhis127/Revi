@@ -1,11 +1,11 @@
 import 'dart:typed_data';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 import '../config/design_tokens.dart';
 import '../config/cover_palette.dart';
 import '../models/book.dart';
+import '../widgets/cover_picker_sheet.dart';
 import '../providers/app_state.dart';
 import 'scan_page.dart';
 import 'paywall_page.dart';
@@ -16,8 +16,15 @@ class AddBookPage extends StatefulWidget {
   final int? targetPageIndex;
   /// scan_page에서 넘어온 경우 true — '기존 도서에 추가' 버튼을 표시
   final bool fromScan;
+  /// 스캔 직후 저장된(아직 책 미지정) 문장 ID — 책 결정 시 해당 책으로 연결
+  final String? pendingHighlightId;
 
-  const AddBookPage({super.key, this.targetPageIndex, this.fromScan = false});
+  const AddBookPage({
+    super.key,
+    this.targetPageIndex,
+    this.fromScan = false,
+    this.pendingHighlightId,
+  });
 
   @override
   State<AddBookPage> createState() => _AddBookPageState();
@@ -26,7 +33,6 @@ class AddBookPage extends StatefulWidget {
 class _AddBookPageState extends State<AddBookPage> {
   final _titleCtrl  = TextEditingController();
   final _authorCtrl = TextEditingController();
-  final _picker = ImagePicker();
   Uint8List? _coverBytes;
   String? _coverColorName; // 표지에서 추출한 책등 색
 
@@ -47,17 +53,19 @@ class _AddBookPageState extends State<AddBookPage> {
   }
 
   Future<void> _pickCoverImage() async {
-    final file = await _picker.pickImage(source: ImageSource.gallery);
-    if (file != null) {
-      final bytes = await file.readAsBytes();
-      // 표지 대표 색 → 가장 가까운 팔레트 색으로 책등 색 자동 결정
-      final colorName = await CoverPalette.nameFromImage(bytes);
-      if (!mounted) return;
-      setState(() {
-        _coverBytes = bytes;
-        _coverColorName = colorName;
-      });
-    }
+    // 표지 입력 시트: 제목 검색(판본 선택) / 갤러리 / 카메라
+    final bytes = await showCoverPickerSheet(
+      context,
+      initialQuery: _titleCtrl.text.trim(),
+    );
+    if (bytes == null || !mounted) return;
+    // 표지 대표 색 → 가장 가까운 팔레트 색으로 책등 색 자동 결정
+    final colorName = await CoverPalette.nameFromImage(bytes);
+    if (!mounted) return;
+    setState(() {
+      _coverBytes = bytes;
+      _coverColorName = colorName;
+    });
   }
 
 
@@ -122,6 +130,10 @@ class _AddBookPageState extends State<AddBookPage> {
       coverImageBytes: _coverBytes,
       tocText: state.pendingTocText,
     ));
+    // 스캔에서 넘어온 미지정 문장을 방금 만든 책에 귀속 (목차 챕터도 자동 연결)
+    if (widget.pendingHighlightId != null) {
+      state.moveHighlightToBook(widget.pendingHighlightId!, bookId);
+    }
     state.clearTocSaved();
     state.clearPendingToc();
     if (mounted) Navigator.of(context).popUntil((r) => r.isFirst);
@@ -156,8 +168,6 @@ class _AddBookPageState extends State<AddBookPage> {
                     const SizedBox(height: 22),
                     _buildField('저자', _authorCtrl, '저자를 입력하세요'),
                     const SizedBox(height: 22),
-                    _buildIsbnButton(),
-                    const SizedBox(height: 14),
                     _buildTocButton(state),
                     const SizedBox(height: 22),
                   ],
@@ -261,25 +271,6 @@ class _AddBookPageState extends State<AddBookPage> {
           ),
         ),
       ],
-    );
-  }
-
-  Widget _buildIsbnButton() {
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: DesignTokens.bgIvoryDeep,
-        border: Border.all(color: DesignTokens.rule),
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Row(
-        children: [
-          _barcodeIcon(),
-          const SizedBox(width: 10),
-          Expanded(child: Text('ISBN 바코드로 자동 입력', style: DesignTokens.hahmlet(13, color: DesignTokens.inkSoft))),
-          Text('›', style: DesignTokens.ptSans(16, color: DesignTokens.inkFaint)),
-        ],
-      ),
     );
   }
 
@@ -479,7 +470,11 @@ class _AddBookPageState extends State<AddBookPage> {
                       subtitle: Text(book.author,
                           style: DesignTokens.hahmlet(11, color: DesignTokens.inkMute)),
                       onTap: () {
-                        state.moveLastHighlightToBook(book.id);
+                        // 스캔 직후 미지정 문장을 선택한 책으로 귀속
+                        if (widget.pendingHighlightId != null) {
+                          state.moveHighlightToBook(
+                              widget.pendingHighlightId!, book.id);
+                        }
                         Navigator.pop(ctx);
                         Navigator.of(context).popUntil((r) => r.isFirst);
                       },
@@ -495,26 +490,4 @@ class _AddBookPageState extends State<AddBookPage> {
     );
   }
 
-  Widget _barcodeIcon() {
-    return SizedBox(
-      width: 16, height: 16,
-      child: CustomPaint(painter: _BarcodePainter()),
-    );
-  }
-}
-
-class _BarcodePainter extends CustomPainter {
-  @override
-  void paint(Canvas canvas, Size size) {
-    final p = Paint()..color = DesignTokens.ink..style = PaintingStyle.fill;
-    final bars = [
-      [0.00, 0.14], [0.21, 0.07], [0.35, 0.14], [0.56, 0.07], [0.70, 0.14],
-    ];
-    for (final b in bars) {
-      canvas.drawRect(Rect.fromLTWH(size.width * b[0], 0, size.width * b[1], size.height), p);
-    }
-  }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter old) => false;
 }

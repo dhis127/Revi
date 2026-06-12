@@ -93,6 +93,24 @@ class DesignTokens {
     }
   }
 
+  // ===== Book color helper =====
+  /// 책 팔레트 이름(navy/wine/…) → 대표 단색.
+  /// 책 색상 표시는 slotColor가 아니라 이 함수를 사용해야 10색 전부 구분됨.
+  static Color bookAccent(String color) {
+    switch (color) {
+      case 'terra':  return const Color(0xFFB05330);
+      case 'amber':  return const Color(0xFF8A6523);
+      case 'ink':    return const Color(0xFF2A2018);
+      case 'navy':   return const Color(0xFF2E4870);
+      case 'wine':   return const Color(0xFF8C2F4A);
+      case 'forest': return const Color(0xFF24503A);
+      case 'slate':  return const Color(0xFF45586A);
+      case 'plum':   return const Color(0xFF5C2E72);
+      case 'cognac': return const Color(0xFF7E4E2C);
+      default:       return const Color(0xFF4A7B5E); // sage
+    }
+  }
+
   // ===== Cover gradients (Light) =====
   static LinearGradient coverGrad(String color) {
     switch (color) {

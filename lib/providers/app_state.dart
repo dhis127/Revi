@@ -65,6 +65,15 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
+  // ── 로그인 이메일 (구글 로그인·회원가입 시 저장) ──────────────────────────────
+  String _userEmail = '';
+  String get userEmail => _userEmail;
+
+  void setUserEmail(String email) {
+    _userEmail = email.trim();
+    notifyListeners();
+  }
+
   // ── 독서 리포트 ───────────────────────────────────────────────────────────
   // 개발 중 확인용 샘플 리포트 (Phase 3에서 서버 데이터로 교체)
   List<ReadingReport> _reports = [
@@ -270,6 +279,7 @@ class AppState extends ChangeNotifier {
     _subscriptionTier = SubscriptionTier.free;
     if (!canUseThemeMode(_themeMode)) _themeMode = AppThemeMode.light;
     if (!canUseFont(_memoFont)) _memoFont = 'gaegu';
+    _themeIntensity = 1.0; // 프리미엄 전용 강도 조절 초기화
     _highlightSlotOrder = ['sage', 'terra', 'amber'];
     _slotColors = {
       'sage':  const Color(0xFF8FB89E),
@@ -428,7 +438,14 @@ class AppState extends ChangeNotifier {
   }
 
   void removeHighlight(String id) {
+    final target = _highlights.where((h) => h.id == id).firstOrNull;
+    if (target == null) return;
+    // 첨부 이미지 파일도 함께 정리 (고아 파일 방지)
+    if (target.imagePath.isNotEmpty) {
+      try { File(target.imagePath).deleteSync(); } catch (_) {}
+    }
     _highlights = _highlights.where((h) => h.id != id).toList();
+    if (_effectiveHighlightCount > 0) _effectiveHighlightCount--;
     notifyListeners();
   }
 
@@ -445,37 +462,66 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// 스캔 직후 '기존 도서에 추가' 시 사용 — 가장 최근 저장된 문장의 bookId를 변경
-  void moveLastHighlightToBook(String targetBookId) {
-    if (_highlights.isEmpty) return;
-    final last = _highlights.last;
-    _highlights = [
-      ..._highlights.sublist(0, _highlights.length - 1),
-      last.copyWith(bookId: targetBookId),
-    ];
-    notifyListeners();
-  }
-
-  /// 임의 문장을 다른 책으로 이동 — bookId를 대상 책 id로 갱신
+  /// 임의 문장을 다른 책으로 이동 — bookId를 대상 책 id로 갱신.
   ///
   /// 이 앱의 구조상 Book은 quotes 리스트를 직접 보유하지 않고,
   /// Highlight.bookId 참조로 소속 책이 결정됩니다.
-  /// 따라서 아래 한 줄이 세 가지를 동시에 처리합니다:
-  ///   a. 원래 책에서 제거  (bookId가 더 이상 원래 책을 가리키지 않음)
-  ///   b. 대상 책에 추가    (bookId가 대상 책을 가리킴)
-  ///   c. bookId 필드 업데이트
+  /// 이동 시 대상 책에 목차(tocText)가 있으면 쪽수로 챕터를 자동 연결합니다.
   void moveHighlightToBook(String highlightId, String targetBookId) {
     final idx = _highlights.indexWhere((h) => h.id == highlightId);
     if (idx == -1) return;
-    if (_highlights[idx].bookId == targetBookId) return; // 이미 같은 책
+    final h = _highlights[idx];
+    if (h.bookId == targetBookId) return; // 이미 같은 책
     _highlights = [
       for (int i = 0; i < _highlights.length; i++)
         if (i == idx)
-          _highlights[i].copyWith(bookId: targetBookId)
+          h.copyWith(
+            bookId: targetBookId,
+            toc: chapterForPage(targetBookId, h.page),
+          )
         else
           _highlights[i],
     ];
     notifyListeners();
+  }
+
+  // ── 목차 텍스트 → 쪽수 기반 챕터 매핑 ─────────────────────────────────────────
+  /// 책의 tocText에서 "챕터명 ... 쪽수" 줄들을 파싱해,
+  /// 주어진 page가 속한 챕터명을 반환. 매핑 불가 시 빈 문자열.
+  String chapterForPage(String bookId, int page) {
+    if (page <= 0) return '';
+    final book = _books.where((b) => b.id == bookId).firstOrNull;
+    final toc = book?.tocText ?? '';
+    if (toc.isEmpty) return '';
+
+    // 줄 끝의 쪽수(1~4자리)를 챕터 시작 페이지로 해석
+    final entryRe = RegExp(r'^(.*?)[\s·.…\-―_~]*(\d{1,4})$');
+    final entries = <(String, int)>[];
+    for (final raw in toc.split('\n')) {
+      final line = raw.trim();
+      if (line.isEmpty) continue;
+      final m = entryRe.firstMatch(line);
+      if (m == null) continue;
+      final title = m.group(1)!
+          .trim()
+          .replaceAll(RegExp(r'[·.…\-―_~]+$'), '')
+          .trim();
+      final p = int.tryParse(m.group(2)!);
+      if (title.isEmpty || p == null || p <= 0) continue;
+      entries.add((title, p));
+    }
+    if (entries.isEmpty) return '';
+
+    entries.sort((a, b) => a.$2.compareTo(b.$2));
+    String result = '';
+    for (final (title, startPage) in entries) {
+      if (startPage <= page) {
+        result = title;
+      } else {
+        break;
+      }
+    }
+    return result;
   }
 
   // ── 책장 페이지 관리 ─────────────────────────────────────────────────────────
@@ -524,13 +570,6 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  void updateBookCover(String bookId, String imagePath) {
-    _books = _books
-        .map((b) => b.id == bookId ? b.copyWith(coverImagePath: imagePath) : b)
-        .toList();
-    notifyListeners();
-  }
-
   void updateBookCoverBytes(String bookId, Uint8List bytes, {String? color}) {
     _books = _books
         .map((b) => b.id == bookId
@@ -550,8 +589,21 @@ class AppState extends ChangeNotifier {
   List<Highlight> highlightsForBook(String bookId) =>
       _highlights.where((h) => h.bookId == bookId).toList();
 
-  String nextHighlightId() => 'h${_highlights.length + 1}';
-  String nextBookId() => 'b${_books.length + 1}';
+  // ID는 "최대 숫자 + 1" 방식 — 중간 삭제 후에도 기존 ID와 절대 충돌하지 않음.
+  // (기존 length+1 방식은 삭제 후 재저장 시 ID가 겹쳐 조용히 저장 실패했음)
+  String nextHighlightId() =>
+      'h${_nextNumericId(_highlights.map((h) => h.id), 'h')}';
+  String nextBookId() => 'b${_nextNumericId(_books.map((b) => b.id), 'b')}';
+
+  static int _nextNumericId(Iterable<String> ids, String prefix) {
+    int maxN = 0;
+    for (final id in ids) {
+      if (!id.startsWith(prefix)) continue;
+      final n = int.tryParse(id.substring(prefix.length));
+      if (n != null && n > maxN) maxN = n;
+    }
+    return maxN + 1;
+  }
 
   // ── 영속화 ────────────────────────────────────────────────────────────────
   Timer? _saveDebounce;
@@ -566,6 +618,7 @@ class AppState extends ChangeNotifier {
 
       _isLoggedIn     = (j['isLoggedIn'] as bool?)        ?? false;
       _nickname       = (j['nickname']   as String?)       ?? '';
+      _userEmail      = (j['userEmail']  as String?)       ?? '';
       _activeSlot     = (j['activeSlot'] as String?)       ?? 'sage';
       _memoFont       = (j['memoFont']   as String?)       ?? 'gaegu';
       _themeIntensity = ((j['themeIntensity'] as num?)     ?? 1.0).toDouble();
@@ -577,6 +630,22 @@ class AppState extends ChangeNotifier {
 
       if (j['highlightSlotOrder'] != null) {
         _highlightSlotOrder = List<String>.from(j['highlightSlotOrder'] as List);
+      }
+      // 슬롯 색상 복원 (커스텀 색·추가 슬롯 색 유지)
+      if (j['slotColors'] != null) {
+        final m = j['slotColors'] as Map<String, dynamic>;
+        _slotColors = {
+          for (final e in m.entries) e.key: Color(e.value as int),
+        };
+        // 기본 3슬롯 키는 항상 존재 보장
+        _defaultSlotColors.forEach((k, v) => _slotColors.putIfAbsent(k, () => v));
+      }
+      // 리포트 + 읽음 상태 복원
+      if (j['reports'] != null) {
+        _reports = (j['reports'] as List)
+            .map((e) =>
+                ReadingReport.fromJson(Map<String, dynamic>.from(e as Map)))
+            .toList();
       }
       if (j['reminderDays'] != null) {
         _reminderDays = Set<int>.from(j['reminderDays'] as List);
@@ -633,12 +702,15 @@ class AppState extends ChangeNotifier {
       final payload = _StatePayload(
         isLoggedIn:          _isLoggedIn,
         nickname:            _nickname,
+        userEmail:           _userEmail,
         activeSlot:          _activeSlot,
         themeMode:           _themeMode.index,
         memoFont:            _memoFont,
         themeIntensity:      _themeIntensity,
         exportFormat:        _exportFormat,
         highlightSlotOrder:  _highlightSlotOrder,
+        slotColors:          _slotColors.map((k, v) => MapEntry(k, v.toARGB32())),
+        reports:             _reports.map((r) => r.toJson()).toList(),
         reminderEnabled:     _reminderEnabled,
         reminderDays:        _reminderDays.toList(),
         reminderStartHour:   _reminderStartTime.hour,
@@ -675,12 +747,15 @@ class AppState extends ChangeNotifier {
 class _StatePayload {
   final bool isLoggedIn;
   final String nickname;
+  final String userEmail;
   final String activeSlot;
   final int themeMode;
   final String memoFont;
   final double themeIntensity;
   final String exportFormat;
   final List<String> highlightSlotOrder;
+  final Map<String, int> slotColors;
+  final List<Map<String, dynamic>> reports;
   final bool reminderEnabled;
   final List<int> reminderDays;
   final int reminderStartHour;
@@ -697,12 +772,15 @@ class _StatePayload {
   const _StatePayload({
     required this.isLoggedIn,
     required this.nickname,
+    required this.userEmail,
     required this.activeSlot,
     required this.themeMode,
     required this.memoFont,
     required this.themeIntensity,
     required this.exportFormat,
     required this.highlightSlotOrder,
+    required this.slotColors,
+    required this.reports,
     required this.reminderEnabled,
     required this.reminderDays,
     required this.reminderStartHour,
@@ -722,12 +800,15 @@ class _StatePayload {
 String _encodeStatePayload(_StatePayload p) => jsonEncode({
   'isLoggedIn':          p.isLoggedIn,
   'nickname':            p.nickname,
+  'userEmail':           p.userEmail,
   'activeSlot':          p.activeSlot,
   'themeMode':           p.themeMode,
   'memoFont':            p.memoFont,
   'themeIntensity':      p.themeIntensity,
   'exportFormat':        p.exportFormat,
   'highlightSlotOrder':  p.highlightSlotOrder,
+  'slotColors':          p.slotColors,
+  'reports':             p.reports,
   'reminderEnabled':     p.reminderEnabled,
   'reminderDays':        p.reminderDays,
   'reminderStartHour':   p.reminderStartHour,

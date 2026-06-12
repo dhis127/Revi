@@ -57,7 +57,9 @@ class _LoginPageState extends State<LoginPage>
       account ??= await _googleSignIn.signIn();
       if (account != null) {
         if (!mounted) return;
-        Navigator.pushReplacementNamed(context, '/home');
+        // 설정 화면 등에 표시할 로그인 계정 이메일 저장
+        context.read<AppState>().setUserEmail(account.email);
+        _goHome();
       }
     } catch (e) {
       if (!mounted) return;
@@ -83,6 +85,11 @@ class _LoginPageState extends State<LoginPage>
   @override
   Widget build(BuildContext context) {
     final isDark = context.watch<AppState>().isDark;
+    final ink    = DesignTokens.textColor(isDark);
+    final mute   = DesignTokens.textColorMute(isDark);
+    final faint  = DesignTokens.textColorFaint(isDark);
+    final line   = isDark ? DesignTokens.ruleDarkStrong : const Color(0xFFBBBBBB);
+    final divider = isDark ? DesignTokens.ruleDark : const Color(0xFFCCCCCC);
 
     return Scaffold(
       backgroundColor: DesignTokens.bgColor(isDark),
@@ -128,7 +135,7 @@ class _LoginPageState extends State<LoginPage>
                             children: [
                               Text(
                                 'Revi',
-                                style: DesignTokens.solwayBold700(80),
+                                style: DesignTokens.solwayBold700(80, ink),
                               ),
                               Positioned(
                                 bottom: -13,
@@ -172,7 +179,10 @@ class _LoginPageState extends State<LoginPage>
                             child: RichText(
                               text: TextSpan(
                                 style: DesignTokens.ptSansRegular(
-                                    11.8, const Color(0xFF3B2015)),
+                                    11.8,
+                                    isDark
+                                        ? DesignTokens.inkDarkSoft
+                                        : const Color(0xFF3B2015)),
                                 children: const [
                                   TextSpan(text: 'Swipe to my '),
                                   TextSpan(
@@ -192,14 +202,13 @@ class _LoginPageState extends State<LoginPage>
 
                         // 이메일 입력창 (12 × 1.05 = 12.6)
                         TextField(
-                          style: DesignTokens.ptSansRegular(12.6),
+                          style: DesignTokens.ptSansRegular(12.6, ink),
                           decoration: InputDecoration(
                             hintText: '이메일',
-                            hintStyle: DesignTokens.ptSansRegular(
-                                12.6, const Color(0xFFAAAAAA)),
-                            enabledBorder: const UnderlineInputBorder(
-                              borderSide:
-                                  BorderSide(color: Color(0xFFBBBBBB)),
+                            hintStyle:
+                                DesignTokens.ptSansRegular(12.6, faint),
+                            enabledBorder: UnderlineInputBorder(
+                              borderSide: BorderSide(color: line),
                             ),
                             focusedBorder: const UnderlineInputBorder(
                               borderSide:
@@ -217,14 +226,13 @@ class _LoginPageState extends State<LoginPage>
                         TextField(
                           obscureText: _obscurePassword,
                           focusNode: _passwordFocus,
-                          style: DesignTokens.ptSansRegular(12.6),
+                          style: DesignTokens.ptSansRegular(12.6, ink),
                           decoration: InputDecoration(
                             hintText: '비밀번호',
-                            hintStyle: DesignTokens.ptSansRegular(
-                                12.6, const Color(0xFFAAAAAA)),
-                            enabledBorder: const UnderlineInputBorder(
-                              borderSide:
-                                  BorderSide(color: Color(0xFFBBBBBB)),
+                            hintStyle:
+                                DesignTokens.ptSansRegular(12.6, faint),
+                            enabledBorder: UnderlineInputBorder(
+                              borderSide: BorderSide(color: line),
                             ),
                             focusedBorder: const UnderlineInputBorder(
                               borderSide:
@@ -240,7 +248,7 @@ class _LoginPageState extends State<LoginPage>
                                     ? Icons.visibility_off_outlined
                                     : Icons.visibility_outlined,
                                 size: 18,
-                                color: const Color(0xFFBBBBBB),
+                                color: faint,
                               ),
                             ),
                           ),
@@ -260,8 +268,7 @@ class _LoginPageState extends State<LoginPage>
                             ),
                             child: Text(
                               '비밀번호를 잊으셨나요?',
-                              style: DesignTokens.ptSansRegular(
-                                  9.9, const Color(0xFF999999)),
+                              style: DesignTokens.ptSansRegular(9.9, mute),
                             ),
                           ),
                         ),
@@ -291,19 +298,17 @@ class _LoginPageState extends State<LoginPage>
                         // 구분선 (또는) (9.4 × 1.05 = 9.9)
                         Row(
                           children: [
-                            const Expanded(
-                                child: Divider(color: Color(0xFFCCCCCC))),
+                            Expanded(child: Divider(color: divider)),
                             Padding(
                               padding:
                                   const EdgeInsets.symmetric(horizontal: 8),
                               child: Text(
                                 '또는',
-                                style: DesignTokens.ptSansRegular(
-                                    9.9, const Color(0xFFAAAAAA)),
+                                style:
+                                    DesignTokens.ptSansRegular(9.9, faint),
                               ),
                             ),
-                            const Expanded(
-                                child: Divider(color: Color(0xFFCCCCCC))),
+                            Expanded(child: Divider(color: divider)),
                           ],
                         ),
                         const SizedBox(height: 12),
@@ -352,8 +357,7 @@ class _LoginPageState extends State<LoginPage>
                           child: RichText(
                             textAlign: TextAlign.center,
                             text: TextSpan(
-                              style: DesignTokens.ptSansRegular(
-                                  10.8, const Color(0xFF888888)),
+                              style: DesignTokens.ptSansRegular(10.8, mute),
                               children: [
                                 const TextSpan(text: '아직 계정이 없으신가요? '),
                                 TextSpan(

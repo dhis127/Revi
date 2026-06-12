@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 import '../config/design_tokens.dart';
 import '../config/cover_palette.dart';
@@ -7,6 +6,7 @@ import '../models/book.dart';
 import '../models/highlight.dart';
 import '../providers/app_state.dart';
 import '../widgets/book_cover_image.dart';
+import '../widgets/cover_picker_sheet.dart';
 import '../widgets/highlight_card.dart';
 import '../widgets/memo_editor.dart';
 import '../widgets/filter_chip_row.dart';
@@ -24,7 +24,6 @@ class ArchivePage extends StatefulWidget {
 class _ArchivePageState extends State<ArchivePage> {
   String _filter = 'all';
   Highlight? _memoTarget;
-  final _picker = ImagePicker();
   final _commentCtrl = TextEditingController();
   final _commentFocus = FocusNode();
   bool _commentInitialized = false;
@@ -47,14 +46,15 @@ class _ArchivePageState extends State<ArchivePage> {
   }
 
   Future<void> _pickCover(Book book) async {
-    final file = await _picker.pickImage(source: ImageSource.gallery);
-    if (file != null && mounted) {
-      final bytes = await file.readAsBytes();
-      // 표지 대표 색 → 책등 색 자동 갱신
-      final colorName = await CoverPalette.nameFromImage(bytes);
-      if (!mounted) return;
-      context.read<AppState>().updateBookCoverBytes(book.id, bytes, color: colorName);
-    }
+    // 표지 입력 시트: 제목 검색(판본 선택) / 갤러리 / 카메라
+    final bytes = await showCoverPickerSheet(context, initialQuery: book.title);
+    if (bytes == null || !mounted) return;
+    // 표지 대표 색 → 책등 색 자동 갱신
+    final colorName = await CoverPalette.nameFromImage(bytes);
+    if (!mounted) return;
+    context
+        .read<AppState>()
+        .updateBookCoverBytes(book.id, bytes, color: colorName);
   }
 
   void _showMoveSheet(Book book, bool isDark) {
@@ -133,8 +133,18 @@ class _ArchivePageState extends State<ArchivePage> {
   Widget build(BuildContext context) {
     final state = context.watch<AppState>();
     final isDark = state.isDark;
-    final book = state.books.firstWhere((b) => b.id == widget.bookId,
-        orElse: () => state.books.first);
+    final book =
+        state.books.where((b) => b.id == widget.bookId).firstOrNull;
+    // 책이 삭제·유실된 경우 빈 화면 대신 안전하게 복귀
+    if (book == null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && Navigator.canPop(context)) Navigator.pop(context);
+      });
+      return Scaffold(
+        backgroundColor: isDark ? DesignTokens.bgDark : DesignTokens.bgIvory,
+        body: const SizedBox.shrink(),
+      );
+    }
     final all = state.highlightsForBook(widget.bookId);
     final list = _filter == 'all' ? all : all.where((h) => h.slot == _filter).toList();
 
@@ -335,24 +345,36 @@ class _ArchivePageState extends State<ArchivePage> {
             child: Row(
               children: [
                 GestureDetector(
+                  behavior: HitTestBehavior.opaque,
                   onTap: () => Navigator.pop(context),
-                  child: Text('← 서재', style: DesignTokens.hahmlet(13,
-                      color: isDark ? DesignTokens.inkDarkMute : DesignTokens.inkMute)),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 8),
+                    child: Text('← 서재', style: DesignTokens.hahmlet(13,
+                        color: isDark ? DesignTokens.inkDarkMute : DesignTokens.inkMute)),
+                  ),
                 ),
                 const Spacer(),
                 GestureDetector(
+                  behavior: HitTestBehavior.opaque,
                   onTap: () => _showMoveSheet(book, isDark),
-                  child: Text('책장 이동',
-                      style: DesignTokens.hahmlet(12,
-                          color: isDark ? DesignTokens.inkDarkMute : DesignTokens.inkMute)),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
+                    child: Text('책장 이동',
+                        style: DesignTokens.hahmlet(12,
+                            color: isDark ? DesignTokens.inkDarkMute : DesignTokens.inkMute)),
+                  ),
                 ),
-                const SizedBox(width: 16),
+                const SizedBox(width: 8),
                 GestureDetector(
+                  behavior: HitTestBehavior.opaque,
                   onTap: () => Navigator.push(context,
                       MaterialPageRoute(builder: (_) => const QuotesPage())),
-                  child: Text('모아둔 문장 →',
-                      style: DesignTokens.hahmlet(12,
-                          color: isDark ? DesignTokens.inkDarkMute : DesignTokens.inkMute)),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
+                    child: Text('모아둔 문장 →',
+                        style: DesignTokens.hahmlet(12,
+                            color: isDark ? DesignTokens.inkDarkMute : DesignTokens.inkMute)),
+                  ),
                 ),
               ],
             ),
@@ -380,7 +402,8 @@ class _ArchivePageState extends State<ArchivePage> {
                 ),
                 const SizedBox(width: 16),
                 GestureDetector(
-                  onTap: book.coverImagePath == null ? () => _pickCover(book) : null,
+                  // 표지는 언제든 탭해서 변경 가능 (검색/갤러리/카메라)
+                  onTap: () => _pickCover(book),
                   child: Container(
                     width: 78, height: 108,
                     padding: const EdgeInsets.all(2),
@@ -390,43 +413,29 @@ class _ArchivePageState extends State<ArchivePage> {
                     ),
                     child: ClipRRect(
                       borderRadius: BorderRadius.circular(4),
-                      child: BookCoverImage(
-                        book: book,
-                        placeholder: Stack(
-                          alignment: Alignment.center,
-                          children: [
-                            Container(
-                              decoration: BoxDecoration(
-                                gradient: isDark
-                                    ? DesignTokens.coverGradDark(book.color)
-                                    : DesignTokens.coverGrad(book.color),
+                      child: Stack(
+                        fit: StackFit.expand,
+                        children: [
+                          BookCoverImage(
+                            book: book,
+                            placeholder: _coverPlaceholder(book, isDark),
+                          ),
+                          // 표지가 있을 때: 교체 가능 표시 (연필 칩)
+                          if (book.coverImageBytes != null ||
+                              book.coverImagePath != null)
+                            Positioned(
+                              bottom: 3, right: 3,
+                              child: Container(
+                                padding: const EdgeInsets.all(3.5),
+                                decoration: BoxDecoration(
+                                  color: Colors.black54,
+                                  borderRadius: BorderRadius.circular(4),
+                                ),
+                                child: const Icon(Icons.edit,
+                                    size: 10, color: Colors.white),
                               ),
                             ),
-                            Container(
-                              width: 28,
-                              height: 28,
-                              decoration: BoxDecoration(
-                                color: isDark
-                                    ? DesignTokens.inkDarkFaint.withValues(alpha: 0.35)
-                                    : Colors.white.withValues(alpha: 0.25),
-                                shape: BoxShape.circle,
-                                border: isDark
-                                    ? Border.all(
-                                        color: DesignTokens.inkDarkMute.withValues(alpha: 0.4),
-                                        width: 1,
-                                      )
-                                    : null,
-                              ),
-                              child: Icon(
-                                Icons.add,
-                                color: isDark
-                                    ? DesignTokens.inkDarkSoft
-                                    : Colors.white,
-                                size: 18,
-                              ),
-                            ),
-                          ],
-                        ),
+                        ],
                       ),
                     ),
                   ),
@@ -473,6 +482,43 @@ class _ArchivePageState extends State<ArchivePage> {
           ),
         ],
       ),
+    );
+  }
+
+  // 표지 없음 placeholder (그라데이션 + 추가 아이콘)
+  Widget _coverPlaceholder(Book book, bool isDark) {
+    return Stack(
+      alignment: Alignment.center,
+      children: [
+        Container(
+          decoration: BoxDecoration(
+            gradient: isDark
+                ? DesignTokens.coverGradDark(book.color)
+                : DesignTokens.coverGrad(book.color),
+          ),
+        ),
+        Container(
+          width: 28,
+          height: 28,
+          decoration: BoxDecoration(
+            color: isDark
+                ? DesignTokens.inkDarkFaint.withValues(alpha: 0.35)
+                : Colors.white.withValues(alpha: 0.25),
+            shape: BoxShape.circle,
+            border: isDark
+                ? Border.all(
+                    color: DesignTokens.inkDarkMute.withValues(alpha: 0.4),
+                    width: 1,
+                  )
+                : null,
+          ),
+          child: Icon(
+            Icons.add,
+            color: isDark ? DesignTokens.inkDarkSoft : Colors.white,
+            size: 18,
+          ),
+        ),
+      ],
     );
   }
 

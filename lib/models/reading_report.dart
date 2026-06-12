@@ -55,4 +55,32 @@ class ReadingReport {
         aiComment: aiComment,
         isRead: isRead ?? this.isRead,
       );
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'year': year,
+        'month': month,
+        'generatedAt': generatedAt.toIso8601String(),
+        'booksAdded': booksAdded,
+        'quotesAdded': quotesAdded,
+        'topBookTitle': topBookTitle,
+        'quotesBySlot': quotesBySlot,
+        'aiComment': aiComment,
+        'isRead': isRead,
+      };
+
+  factory ReadingReport.fromJson(Map<String, dynamic> j) => ReadingReport(
+        id: j['id'] as String,
+        year: j['year'] as int,
+        month: j['month'] as int,
+        generatedAt:
+            DateTime.tryParse(j['generatedAt'] as String? ?? '') ?? DateTime.now(),
+        booksAdded: (j['booksAdded'] as int?) ?? 0,
+        quotesAdded: (j['quotesAdded'] as int?) ?? 0,
+        topBookTitle: (j['topBookTitle'] as String?) ?? '',
+        quotesBySlot: Map<String, int>.from(
+            (j['quotesBySlot'] as Map?) ?? const <String, int>{}),
+        aiComment: (j['aiComment'] as String?) ?? '',
+        isRead: (j['isRead'] as bool?) ?? false,
+      );
 }

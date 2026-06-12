@@ -404,7 +404,8 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
         if (vy.abs() > vx.abs() * 0.5) return;
         if (vx < -600) {
           Navigator.push(context, MaterialPageRoute(builder: (_) => const ScanPage()));
-        } else if (vx > 600) {
+        } else if (vx > 900) {
+          // 로그아웃은 파괴적 동작에 가까우므로 더 강한 플링에만 반응 (오발동 방지)
           _showLogoutConfirm();
         }
       },
@@ -594,19 +595,24 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
                     onTapOutside: (_) => _submitTitle(state),
                   )
                 : isReportPage
-                    // 리포트 책장: 수정 불가 고정 제목
+                    // 리포트 책장: 수정 불가 고정 제목 (다크에서도 가독 확보)
                     ? Row(
                         mainAxisSize: MainAxisSize.min,
                         crossAxisAlignment: CrossAxisAlignment.end,
                         children: [
-                          const Icon(Icons.auto_stories_outlined,
-                              size: 13, color: Color(0xFF3B2015)),
+                          Icon(Icons.auto_stories_outlined,
+                              size: 13,
+                              color: isDark
+                                  ? DesignTokens.inkDarkSoft
+                                  : const Color(0xFF3B2015)),
                           const SizedBox(width: 5),
                           Text(
                             defaultName,
                             style: DesignTokens.hahmlet(15,
                                 weight: FontWeight.w600,
-                                color: const Color(0xFF3B2015)),
+                                color: isDark
+                                    ? DesignTokens.inkDark
+                                    : const Color(0xFF3B2015)),
                           ),
                         ],
                       )
@@ -642,17 +648,18 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
     final isLastUserShelf = _currentPage == state.pageCount - 1;
 
     if (isReportShelf) {
-      // 리포트 책장에서는 레이블만 표시
+      // 리포트 책장에서는 레이블만 표시 (다크에서도 가독 확보)
+      final labelColor =
+          isDark ? DesignTokens.inkDarkMute : const Color(0xFF3B2015);
       return Padding(
         padding: const EdgeInsets.symmetric(vertical: 9),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            const Icon(Icons.auto_stories_outlined, size: 11,
-                color: Color(0xFF3B2015)),
+            Icon(Icons.auto_stories_outlined, size: 11, color: labelColor),
             const SizedBox(width: 5),
             Text('AI 독서 리포트',
-                style: DesignTokens.ptSans(11, color: const Color(0xFF3B2015))
+                style: DesignTokens.ptSans(11, color: labelColor)
                     .copyWith(letterSpacing: 1.1)),
           ],
         ),
@@ -1460,17 +1467,19 @@ class _ReportShelfContent extends StatelessWidget {
 
     // 무료 유저: 리포트 책장을 미리보기로 표시하되 열람은 막음
     if (!isSubscribed) {
+      final lockColor = isDark
+          ? DesignTokens.inkDarkMute.withValues(alpha: 0.8)
+          : const Color(0xFF3B2015).withValues(alpha: 0.45);
       return _ShelfWrapper(
         child: Center(
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               Icon(Icons.auto_stories_outlined, size: 26,
-                  color: const Color(0xFF3B2015).withValues(alpha: 0.35)),
+                  color: lockColor.withValues(alpha: 0.7)),
               const SizedBox(height: 10),
               Text('스탠다드 구독 후\nAI 독서 리포트를 받아보세요.',
-                  style: DesignTokens.hahmlet(12,
-                      color: const Color(0xFF3B2015).withValues(alpha: 0.45))
+                  style: DesignTokens.hahmlet(12, color: lockColor)
                       .copyWith(height: 1.65),
                   textAlign: TextAlign.center),
             ],
@@ -1480,17 +1489,19 @@ class _ReportShelfContent extends StatelessWidget {
     }
 
     if (reports.isEmpty) {
+      final emptyColor = isDark
+          ? DesignTokens.inkDarkMute.withValues(alpha: 0.8)
+          : const Color(0xFF3B2015).withValues(alpha: 0.45);
       return _ShelfWrapper(
         child: Center(
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               Icon(Icons.auto_stories_outlined, size: 26,
-                  color: const Color(0xFF3B2015).withValues(alpha: 0.35)),
+                  color: emptyColor.withValues(alpha: 0.7)),
               const SizedBox(height: 10),
               Text('매월 1일, AI 독서 리포트가\n이곳에 꽂혀요.',
-                  style: DesignTokens.hahmlet(12,
-                      color: const Color(0xFF3B2015).withValues(alpha: 0.45))
+                  style: DesignTokens.hahmlet(12, color: emptyColor)
                       .copyWith(height: 1.65),
                   textAlign: TextAlign.center),
             ],

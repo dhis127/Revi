@@ -106,7 +106,7 @@ class _GoogleAccountSheetState extends State<_GoogleAccountSheet> {
                   children: [
                     _AccountTile(
                       name: '사용자',
-                      email: 'dhis127@gmail.com',
+                      email: 'revi.reader@gmail.com',
                       onTap: _select,
                     ),
                     const Divider(

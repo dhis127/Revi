@@ -41,6 +41,10 @@ class _QuotesPageState extends State<QuotesPage> {
   @override
   Widget build(BuildContext context) {
     final state = context.watch<AppState>();
+    final isDark = state.isDark;
+    final ink   = isDark ? DesignTokens.inkDark : DesignTokens.ink;
+    final mute  = isDark ? DesignTokens.inkDarkMute : DesignTokens.inkMute;
+    final faint = isDark ? DesignTokens.inkDarkFaint : DesignTokens.inkFaint;
 
     // ── 필터링 ───────────────────────────────────────────────────────────
     final filtered = state.highlights.where((h) {
@@ -60,7 +64,7 @@ class _QuotesPageState extends State<QuotesPage> {
     return Stack(
         children: [
           Scaffold(
-            backgroundColor: DesignTokens.bgIvory,
+            backgroundColor: isDark ? DesignTokens.bgDark : DesignTokens.bgIvory,
             body: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -72,15 +76,18 @@ class _QuotesPageState extends State<QuotesPage> {
                     child: Row(
                       children: [
                         GestureDetector(
+                          behavior: HitTestBehavior.opaque,
                           onTap: () => Navigator.pop(context),
-                          child: Text('← 서재',
-                              style: DesignTokens.hahmlet(13,
-                                  color: DesignTokens.inkMute)),
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 8),
+                            child: Text('← 서재',
+                                style: DesignTokens.hahmlet(13, color: mute)),
+                          ),
                         ),
                         const Spacer(),
                         Text(
                           'QUOTES · ${filtered.length.toString().padLeft(2, '0')}',
-                          style: DesignTokens.ptSans(11, color: DesignTokens.inkMute)
+                          style: DesignTokens.ptSans(11, color: mute)
                               .copyWith(letterSpacing: 1.6),
                         ),
                       ],
@@ -90,7 +97,8 @@ class _QuotesPageState extends State<QuotesPage> {
                 Padding(
                   padding: const EdgeInsets.fromLTRB(24, 4, 24, 12),
                   child: Text('모아둔 문장',
-                      style: DesignTokens.hahmlet(22, weight: FontWeight.w600)
+                      style: DesignTokens.hahmlet(22,
+                              weight: FontWeight.w600, color: ink)
                           .copyWith(letterSpacing: -0.2)),
                 ),
 
@@ -101,27 +109,28 @@ class _QuotesPageState extends State<QuotesPage> {
                     padding:
                         const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
                     decoration: BoxDecoration(
-                      color: DesignTokens.bgIvoryDeep,
+                      color: isDark
+                          ? DesignTokens.bgDarkDeep
+                          : DesignTokens.bgIvoryDeep,
                       borderRadius: BorderRadius.circular(10),
                       border: Border.all(
                         color: _query.isNotEmpty
                             ? DesignTokens.sage
-                            : DesignTokens.rule,
+                            : (isDark ? DesignTokens.ruleDark : DesignTokens.rule),
                       ),
                     ),
                     child: Row(
                       children: [
-                        const Icon(Icons.search,
-                            size: 16, color: DesignTokens.inkMute),
+                        Icon(Icons.search, size: 16, color: mute),
                         const SizedBox(width: 8),
                         Expanded(
                           child: TextField(
                             controller: _searchCtrl,
-                            style: DesignTokens.hahmlet(13),
+                            style: DesignTokens.hahmlet(13, color: ink),
                             decoration: InputDecoration(
                               hintText: '문장을 검색해요',
-                              hintStyle: DesignTokens.hahmlet(13,
-                                  color: DesignTokens.inkFaint),
+                              hintStyle:
+                                  DesignTokens.hahmlet(13, color: faint),
                               border: InputBorder.none,
                               isDense: true,
                               contentPadding:
@@ -132,8 +141,7 @@ class _QuotesPageState extends State<QuotesPage> {
                         if (_query.isNotEmpty)
                           GestureDetector(
                             onTap: () => _searchCtrl.clear(),
-                            child: const Icon(Icons.close,
-                                size: 16, color: DesignTokens.inkMute),
+                            child: Icon(Icons.close, size: 16, color: mute),
                           ),
                       ],
                     ),
@@ -174,8 +182,7 @@ class _QuotesPageState extends State<QuotesPage> {
                             _query.isNotEmpty
                                 ? '"$_query"에 대한 문장이 없어요'
                                 : '아직 모아둔 문장이 없어요.',
-                            style: DesignTokens.hahmlet(14,
-                                color: DesignTokens.inkMute),
+                            style: DesignTokens.hahmlet(14, color: mute),
                           ),
                         )
                       : ListView.builder(
@@ -184,12 +191,11 @@ class _QuotesPageState extends State<QuotesPage> {
                           itemCount: filtered.length,
                           itemBuilder: (_, i) {
                             final h = filtered[i];
-                            final bookTitle = state.books.isEmpty
-                                ? ''
-                                : state.books.firstWhere(
-                                    (b) => b.id == h.bookId,
-                                    orElse: () => state.books.first,
-                                  ).title;
+                            // 책 미지정(스캔 후 책 선택 전 이탈)·삭제된 책 폴백
+                            final book = state.books
+                                .where((b) => b.id == h.bookId)
+                                .firstOrNull;
+                            final bookTitle = book?.title ?? '책 미지정';
                             return _buildDraggableCard(
                                 h, bookTitle, hasTocOrder, state);
                           },
@@ -278,19 +284,32 @@ class _QuotesPageState extends State<QuotesPage> {
 
   // ── 삭제 확인 다이얼로그 ─────────────────────────────────────────────────
   Future<void> _confirmDelete(Highlight h, AppState state) async {
+    final isDark = state.isDark;
     final confirm = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('문장 삭제'),
-        content: const Text('이 문장을 삭제할까요?'),
+        backgroundColor:
+            isDark ? DesignTokens.bgDarkDeep : DesignTokens.bgIvory,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+        title: Text('문장 삭제',
+            style: DesignTokens.hahmlet(16,
+                weight: FontWeight.w600,
+                color: isDark ? DesignTokens.inkDark : DesignTokens.ink)),
+        content: Text('이 문장을 삭제할까요?',
+            style: DesignTokens.hahmlet(13,
+                color: isDark ? DesignTokens.inkDarkMute : DesignTokens.inkMute)),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('취소'),
+            child: Text('취소',
+                style: DesignTokens.hahmlet(13,
+                    color: isDark ? DesignTokens.inkDark : DesignTokens.ink)),
           ),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: Text('삭제', style: TextStyle(color: Colors.red.shade400)),
+            child: Text('삭제',
+                style: DesignTokens.hahmlet(13,
+                    weight: FontWeight.w600, color: DesignTokens.terracotta)),
           ),
         ],
       ),
